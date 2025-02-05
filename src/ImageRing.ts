@@ -1,5 +1,6 @@
 import { Freezable } from "./Freezable";
 import { ImagePlane } from "./ImagePlane";
+import { FloatingArrow } from "./FloatingArrow";
 import * as THREE from "three";
 
 interface ConfigType {
@@ -13,6 +14,7 @@ interface ConfigType {
 export class ImageRing extends Freezable {
   private group: THREE.Group;
   private images: ImagePlane[];
+  private arrows: FloatingArrow[];
   private lastOffset: number = 0;
   private isOdd: boolean = false;
 
@@ -25,6 +27,8 @@ export class ImageRing extends Freezable {
   }: ConfigType) {
     super();
     const anglePiece = 360 / imagePaths.length;
+
+    // Create images
     this.images = imagePaths.map(
       (imagePath, index) =>
         new ImagePlane({
@@ -35,8 +39,29 @@ export class ImageRing extends Freezable {
           worldPoint: new THREE.Vector3(0, 0, depthOffset),
         })
     );
+
+    // Create arrows between images
+    this.arrows = imagePaths.map((_, index) => {
+      const angle = anglePiece * (index + 0.5); // Position halfway between images
+      const radians = (angle * Math.PI) / 180;
+      const radius = depthOffset * 0.5; // Even closer to center
+
+      return new FloatingArrow({
+        x: Math.cos(radians) * radius,
+        y: 0,
+        z: Math.sin(radians) * radius,
+      });
+    });
+
     this.group = new THREE.Group();
     this.images.forEach((image) => this.group.add(image.getMesh()));
+    this.arrows.forEach((arrow) => {
+      const mesh = arrow.getMesh();
+      mesh.rotation.set(0, 0, 0);
+      mesh.scale.set(1.5, 1.5, 1.5); // Slightly smaller since arrow shape is more defined
+      this.group.add(mesh);
+    });
+
     this.group.position.set(0, yPosition, 0);
     this.group.rotation.y = angleOffset;
     this.isOdd = isOdd || false;
@@ -55,6 +80,14 @@ export class ImageRing extends Freezable {
   public update(offset: number) {
     if (this.isFrozen) return;
     this.images.forEach((image) => image.update());
+
+    // Calculate scroll speed from offset change
+    const scrollSpeed = (offset - this.lastOffset) * 20; // Amplify the effect
+
+    // Update arrows with scroll speed
+    this.arrows.forEach((arrow) => arrow.update(scrollSpeed));
+
+    // Update ring rotation
     const newOffset = offset / 3;
     this.group.rotation.y +=
       (newOffset - this.lastOffset) * (this.isOdd ? -1 : 1);

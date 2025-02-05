@@ -1,5 +1,6 @@
 import { ImageRing } from "./ImageRing";
 import { MomentumDraggable } from "./MomentumDraggable";
+import { MusicPlane } from "./MusicPlane";
 import "./style.css";
 import * as THREE from "three";
 
@@ -44,8 +45,16 @@ boom.add(camera);
 scene.add(boom);
 camera.position.set(0, 0, 0);
 
+// Create music player
+const musicPlayer = new MusicPlane({
+  x: 0,
+  y: rings.length * VERTICAL_OFFSET * 0.3,
+  z: DEPTH_OFFSET * 0.5,
+});
+
 function init() {
   rings.forEach((ring) => scene.add(ring.getGroup()));
+  scene.add(musicPlayer.getMesh());
 
   scene.background = new THREE.Color(0xffffff);
 
@@ -66,6 +75,7 @@ function animate() {
   camera.position.y = dragYOffset + (rings.length * VERTICAL_OFFSET) / 2;
 
   rings.forEach((ring) => ring.update(dragYOffset));
+  musicPlayer.update(camera);
 
   renderer.render(scene, camera);
 }
