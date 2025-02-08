@@ -1,13 +1,3 @@
-interface Point {
-  x: number;
-  y: number;
-}
-
-interface Offset {
-  x: number;
-  y: number;
-}
-
 export class MomentumDraggable {
   private element: HTMLElement;
   private isDown: boolean = false;
@@ -46,10 +36,13 @@ export class MomentumDraggable {
 
   public onWheel(event: WheelEvent) {
     event.preventDefault();
-    const walkY = event.deltaY;
+    const walkY = event.deltaY * 0.5;
     const prevYOffset = this.dragYOffset;
     this.dragYOffset -= walkY;
-    this.yVelocity = this.dragYOffset - prevYOffset;
+
+    const targetVelocity = (this.dragYOffset - prevYOffset) * 0.5;
+    this.yVelocity = this.yVelocity * 0.3 + targetVelocity * 0.7;
+
     this.cancelMomentumTracking();
     this.yMomentumID = requestAnimationFrame(this.yMomentumLoop.bind(this));
   }
@@ -71,15 +64,23 @@ export class MomentumDraggable {
   private onMouseMove(event: MouseEvent | TouchEvent) {
     event.preventDefault();
     if (!this.isDown) return;
+
     const { x, y } = this.getPageOffsetFromMouseOrTouchEvent(event);
-    const walkX = x - this.startX;
-    const walkY = y - this.startY;
+    const walkX = (x - this.startX) * 0.5;
+    const walkY = (y - this.startY) * 0.5;
+
     const prevXOffset = this.dragXOffset;
     const prevYOffset = this.dragYOffset;
+
     this.dragXOffset += walkX;
     this.dragYOffset += walkY;
-    this.xVelocity = this.dragXOffset - prevXOffset;
-    this.yVelocity = this.dragYOffset - prevYOffset;
+
+    const targetXVelocity = (this.dragXOffset - prevXOffset) * 0.8;
+    const targetYVelocity = (this.dragYOffset - prevYOffset) * 0.8;
+
+    this.xVelocity = this.xVelocity * 0.2 + targetXVelocity * 0.8;
+    this.yVelocity = this.yVelocity * 0.2 + targetYVelocity * 0.8;
+
     this.startX = x;
     this.startY = y;
   }
@@ -96,17 +97,17 @@ export class MomentumDraggable {
   }
 
   private xMomentumLoop() {
-    this.dragXOffset += this.xVelocity * 2;
-    this.xVelocity *= 0.95;
-    if (Math.abs(this.xVelocity) > 0.5) {
+    this.dragXOffset += this.xVelocity;
+    this.xVelocity *= 0.98;
+    if (Math.abs(this.xVelocity) > 0.1) {
       this.xMomentumID = requestAnimationFrame(this.xMomentumLoop.bind(this));
     }
   }
 
   private yMomentumLoop() {
-    this.dragYOffset += this.yVelocity * 2;
-    this.yVelocity *= 0.95;
-    if (Math.abs(this.yVelocity) > 0.5) {
+    this.dragYOffset += this.yVelocity;
+    this.yVelocity *= 0.98;
+    if (Math.abs(this.yVelocity) > 0.1) {
       this.yMomentumID = requestAnimationFrame(this.yMomentumLoop.bind(this));
     }
   }

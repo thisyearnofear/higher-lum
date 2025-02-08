@@ -92,7 +92,7 @@ export default function Home() {
           }
         }
 
-        for (const [_, ring] of rings) {
+        for (const ring of rings.values()) {
           scene.remove(ring.getGroup());
         }
 
@@ -141,7 +141,7 @@ export default function Home() {
 
       lastScrollOffset = dragYOffset;
 
-      for (const [_, ring] of rings) {
+      for (const ring of rings.values()) {
         ring.update(amplifiedSpeed);
       }
       musicPlayer.update(camera);
@@ -175,7 +175,7 @@ export default function Home() {
     const handleMouseMove = (event: MouseEvent) => {
       event.preventDefault();
       const mesh = getIntersectingObject(event);
-      for (const [_, ring] of rings) {
+      for (const ring of rings.values()) {
         ring.onMouseMove(mesh);
       }
     };
@@ -184,7 +184,7 @@ export default function Home() {
       event.preventDefault();
       const mesh = getIntersectingObject(event);
       if (mesh) {
-        for (const [_, ring] of rings) {
+        for (const ring of rings.values()) {
           ring.onClick();
         }
       }
@@ -207,7 +207,7 @@ export default function Home() {
       renderer.dispose();
 
       // Clean up rings
-      for (const [_, ring] of rings) {
+      for (const ring of rings.values()) {
         scene.remove(ring.getGroup());
       }
       rings.clear();
