@@ -5,6 +5,7 @@ interface FloatingArrowConfig {
   x?: number;
   y?: number;
   z?: number;
+  isSecondary?: boolean;
 }
 
 export class FloatingArrow {
@@ -13,14 +14,21 @@ export class FloatingArrow {
   private rotateAnimation: Animation;
   private basePosition: THREE.Vector3;
   private totalOffset: number = 0;
-  private readonly RESET_THRESHOLD = 20; // Smaller threshold for more frequent, seamless resets
+  private readonly RESET_THRESHOLD = 10;
+  private readonly OVERLAP_DISTANCE = 5;
   private currentSpeed: number = 0;
-  private readonly SPEED_DECAY = 0.95;
-  private readonly SPEED_SCALE = 0.15; // Increased for smoother movement
-  private readonly BASE_SPEED = 0.01; // Constant upward speed
+  private readonly SPEED_DECAY = 0.98;
+  private readonly SPEED_SCALE = 0.1;
+  private readonly BASE_SPEED = 0.01;
   private resetInProgress: boolean = false;
+  private secondaryArrow: FloatingArrow | null = null;
 
-  constructor({ x = 0, y = 0, z = 0 }: FloatingArrowConfig) {
+  constructor({
+    x = 0,
+    y = 0,
+    z = 0,
+    isSecondary = false,
+  }: FloatingArrowConfig) {
     // Create a mathematical up-arrow shape (↑)
     const arrowShape = new THREE.Shape();
     // Vertical line
@@ -69,13 +77,23 @@ export class FloatingArrow {
 
     this.floatAnimation.start();
     this.rotateAnimation.start();
+
+    // Create secondary arrow only if this is not already a secondary arrow
+    if (!isSecondary) {
+      this.secondaryArrow = new FloatingArrow({
+        x,
+        y: y + this.RESET_THRESHOLD,
+        z,
+        isSecondary: true,
+      });
+    }
   }
 
   update(scrollSpeed: number = 0) {
     // Add base upward motion to scroll speed
     const effectiveSpeed = scrollSpeed + this.BASE_SPEED;
 
-    // Update current speed with momentum and improved scaling
+    // Update current speed with momentum
     this.currentSpeed =
       this.currentSpeed * this.SPEED_DECAY + effectiveSpeed * this.SPEED_SCALE;
 
@@ -89,8 +107,15 @@ export class FloatingArrow {
     ) {
       this.resetInProgress = true;
       const resetDirection = this.totalOffset > 0 ? -1 : 1;
-      const resetOffset = resetDirection * this.RESET_THRESHOLD;
-      this.totalOffset = resetOffset;
+      this.totalOffset = resetDirection * this.OVERLAP_DISTANCE;
+
+      // Update secondary arrow position for seamless transition
+      if (this.secondaryArrow) {
+        this.secondaryArrow.setOffset(
+          this.totalOffset + resetDirection * this.RESET_THRESHOLD
+        );
+      }
+
       requestAnimationFrame(() => {
         this.resetInProgress = false;
       });
@@ -107,8 +132,13 @@ export class FloatingArrow {
 
     // Update rotation animation
     this.rotateAnimation.update((val) => {
-      this.mesh.rotation.y = val * 0.2; // Gentle rotation
+      this.mesh.rotation.y = val * 0.2;
     });
+
+    // Update secondary arrow if it exists
+    if (this.secondaryArrow) {
+      this.secondaryArrow.update(scrollSpeed);
+    }
 
     // Reset animations when complete
     if (!this.floatAnimation.isAnimating) {
@@ -119,7 +149,27 @@ export class FloatingArrow {
     }
   }
 
+  setOffset(offset: number) {
+    this.totalOffset = offset;
+  }
+
   getMesh() {
     return this.mesh;
+  }
+
+  getSecondaryMesh() {
+    return this.secondaryArrow?.getMesh() || null;
+  }
+
+  dispose() {
+    if (this.mesh.material) {
+      (this.mesh.material as THREE.Material).dispose();
+    }
+    if (this.mesh.geometry) {
+      this.mesh.geometry.dispose();
+    }
+    if (this.secondaryArrow) {
+      this.secondaryArrow.dispose();
+    }
   }
 }

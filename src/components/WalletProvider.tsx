@@ -11,7 +11,7 @@ import { mainnet } from "wagmi/chains";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 const config = getDefaultConfig({
-  appName: "Higher NFT Gallery",
+  appName: "Higher-Coded",
   projectId: "bb610aae7a8414e57b6186fc724ef657",
   chains: [mainnet],
 });
