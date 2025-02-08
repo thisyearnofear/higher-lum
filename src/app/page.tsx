@@ -1,101 +1,238 @@
-import Image from "next/image";
+"use client";
+
+import { useEffect, useRef } from "react";
+import * as THREE from "three";
+import { ImageRing } from "@/lib/three/ImageRing";
+import { MomentumDraggable } from "@/lib/three/MomentumDraggable";
+import { MusicPlane } from "@/lib/three/MusicPlane";
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+  useEffect(() => {
+    if (!canvasRef.current) return;
+
+    const canvas = canvasRef.current;
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(
+      75,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      1000
+    );
+    const renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+      alpha: true,
+    });
+
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Limit pixel ratio for better performance
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    camera.position.setZ(30);
+
+    const momentumDraggable = new MomentumDraggable(canvas);
+
+    const imagePaths = Array(16)
+      .fill(0)
+      .map((_, index) => `/image-${index + 1}.jpg`);
+
+    const DEPTH_OFFSET = imagePaths.length * 3;
+    const VERTICAL_OFFSET = 0.5;
+    const VISIBLE_RINGS = 100;
+    let currentRingIndex = 0;
+    let lastScrollOffset = 0;
+
+    const rings = new Map<number, ImageRing>();
+
+    function createRing(index: number): ImageRing {
+      return new ImageRing({
+        angleOffset: 20 * index,
+        imagePaths,
+        yPosition: VERTICAL_OFFSET * index,
+        depthOffset: DEPTH_OFFSET,
+        isOdd: index % 2 === 0,
+      });
+    }
+
+    // Initialize first set of rings
+    for (let i = 0; i < VISIBLE_RINGS; i++) {
+      const ring = createRing(i);
+      rings.set(i, ring);
+      scene.add(ring.getGroup());
+    }
+
+    const boom = new THREE.Group();
+    boom.add(camera);
+    scene.add(boom);
+    camera.position.set(0, 0, 0);
+
+    // Create music player
+    const musicPlayer = new MusicPlane({
+      x: 0,
+      y: VISIBLE_RINGS * VERTICAL_OFFSET * 0.3,
+      z: DEPTH_OFFSET * 0.5,
+    });
+
+    function updateRings(cameraY: number) {
+      const baseIndex = Math.floor(cameraY / VERTICAL_OFFSET);
+
+      if (Math.abs(baseIndex - currentRingIndex) > VISIBLE_RINGS / 4) {
+        const newRings = new Map<number, ImageRing>();
+        const startIndex = baseIndex - VISIBLE_RINGS / 2;
+        const endIndex = baseIndex + VISIBLE_RINGS / 2;
+
+        for (let i = startIndex; i < endIndex; i++) {
+          if (rings.has(i)) {
+            newRings.set(i, rings.get(i)!);
+            rings.delete(i);
+          } else {
+            const ring = createRing(i);
+            newRings.set(i, ring);
+            scene.add(ring.getGroup());
+          }
+        }
+
+        for (const [_, ring] of rings) {
+          scene.remove(ring.getGroup());
+        }
+
+        rings.clear();
+        for (const [index, ring] of newRings) {
+          rings.set(index, ring);
+        }
+        currentRingIndex = baseIndex;
+      }
+    }
+
+    function init() {
+      scene.add(musicPlayer.getMesh());
+      scene.background = new THREE.Color(0xffffff);
+
+      const ambientLight = new THREE.AmbientLight(0xffffff);
+      ambientLight.intensity = 4.5;
+      scene.add(ambientLight);
+
+      camera.lookAt(0, 0, 0);
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const originalDragOffset = momentumDraggable.getOffset();
+      // Use raw values from momentum draggable
+      const dragXOffset = originalDragOffset.x / 500;
+      const dragYOffset = originalDragOffset.y / 500;
+
+      boom.rotation.y = dragXOffset;
+      const cameraY = dragYOffset + (VISIBLE_RINGS * VERTICAL_OFFSET) / 2;
+      camera.position.y = cameraY;
+
+      updateRings(cameraY);
+
+      const rawSpeed = dragYOffset - lastScrollOffset;
+      const speedMagnitude = Math.abs(rawSpeed);
+
+      let amplifiedSpeed;
+      if (speedMagnitude < 0.0001) {
+        amplifiedSpeed = 0;
+      } else {
+        // Simpler speed calculation that matches the momentum
+        amplifiedSpeed = rawSpeed * 2;
+      }
+
+      lastScrollOffset = dragYOffset;
+
+      for (const [_, ring] of rings) {
+        ring.update(amplifiedSpeed);
+      }
+      musicPlayer.update(camera);
+
+      renderer.render(scene, camera);
+    }
+
+    function getIntersectingObject(event: MouseEvent) {
+      const vector = new THREE.Vector2(
+        (event.clientX / window.innerWidth) * 2 - 1,
+        -(event.clientY / window.innerHeight) * 2 + 1
+      );
+
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(vector, camera);
+
+      const intersects = raycaster.intersectObjects(scene.children, true);
+      if (intersects.length > 0) {
+        return intersects[0].object;
+      }
+      return null;
+    }
+
+    // Event Listeners
+    const handleResize = () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    };
+
+    const handleMouseMove = (event: MouseEvent) => {
+      event.preventDefault();
+      const mesh = getIntersectingObject(event);
+      for (const [_, ring] of rings) {
+        ring.onMouseMove(mesh);
+      }
+    };
+
+    const handleClick = (event: MouseEvent) => {
+      event.preventDefault();
+      const mesh = getIntersectingObject(event);
+      if (mesh) {
+        for (const [_, ring] of rings) {
+          ring.onClick();
+        }
+      }
+    };
+
+    window.addEventListener("resize", handleResize);
+    canvas.addEventListener("mousemove", handleMouseMove);
+    canvas.addEventListener("click", handleClick);
+
+    init();
+    animate();
+
+    // Cleanup
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      canvas.removeEventListener("mousemove", handleMouseMove);
+      canvas.removeEventListener("click", handleClick);
+      momentumDraggable.dispose();
+      musicPlayer.dispose();
+      renderer.dispose();
+
+      // Clean up rings
+      for (const [_, ring] of rings) {
+        scene.remove(ring.getGroup());
+      }
+      rings.clear();
+    };
+  }, []);
+
+  return (
+    <>
+      <canvas id="bg" ref={canvasRef} />
+      <a
+        href="https://warpcast.com/papa"
+        target="_blank"
+        rel="noopener"
+        className="attribution papa-link"
+      >
+        papa
+      </a>
+      <a
+        href="https://warpcast.com/~/channel/higher"
+        target="_blank"
+        rel="noopener"
+        className="attribution higher-link"
+      >
+        HIGHER
+      </a>
+    </>
   );
 }
