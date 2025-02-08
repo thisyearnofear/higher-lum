@@ -6,6 +6,10 @@ const nextConfig = {
   images: {
     domains: ["futuretape.xyz"], // Allow images from futuretape.xyz
   },
+  // Optimize for static export
+  experimental: {
+    optimizePackageImports: ["@rainbow-me/rainbowkit", "wagmi", "three"],
+  },
 };
 
 module.exports = nextConfig;
