@@ -9,6 +9,7 @@ interface ImageRingConfig {
   yPosition: number;
   depthOffset: number;
   isOdd?: boolean;
+  onDoubleClick?: (imageIndex: number) => void;
 }
 
 export class ImageRing extends Freezable {
@@ -17,6 +18,9 @@ export class ImageRing extends Freezable {
   private arrows: FloatingArrow[];
   private lastOffset: number = 0;
   private isOdd: boolean = false;
+  private lastClickTime: number = 0;
+  private readonly DOUBLE_CLICK_DELAY = 300; // ms
+  private readonly onDoubleClick?: (imageIndex: number) => void;
 
   constructor({
     angleOffset,
@@ -24,6 +28,7 @@ export class ImageRing extends Freezable {
     isOdd,
     yPosition,
     depthOffset,
+    onDoubleClick,
   }: ImageRingConfig) {
     super();
     const anglePiece = 360 / imagePaths.length;
@@ -65,6 +70,7 @@ export class ImageRing extends Freezable {
     this.group.position.set(0, yPosition, 0);
     this.group.rotation.y = angleOffset;
     this.isOdd = isOdd || false;
+    this.onDoubleClick = onDoubleClick;
   }
 
   public onWheel(event: WheelEvent) {
@@ -98,7 +104,34 @@ export class ImageRing extends Freezable {
     this.images.forEach((image) => image.onMouseMove(intersectingObject));
   }
 
-  public onClick() {
+  public onClick(mesh?: THREE.Object3D | null) {
+    if (!mesh) return;
+
+    const currentTime = Date.now();
+    const timeDiff = currentTime - this.lastClickTime;
+    console.log("Click detected, time diff:", timeDiff);
+
+    if (timeDiff < this.DOUBLE_CLICK_DELAY) {
+      // Double click detected
+      console.log("Double click detected in ImageRing");
+      const imagePlane = this.images.find(
+        (plane) =>
+          plane.getMesh() === mesh || plane.getMesh().children.includes(mesh)
+      );
+
+      if (imagePlane) {
+        console.log("Found matching image plane");
+        const imageIndex = this.images.indexOf(imagePlane);
+        console.log("Image index:", imageIndex);
+        if (this.onDoubleClick) {
+          this.onDoubleClick(imageIndex);
+        }
+      }
+    }
+
+    this.lastClickTime = currentTime;
+
+    // Also trigger normal click behavior
     this.images.forEach((image) => image.onClick());
   }
 }

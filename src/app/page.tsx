@@ -1,13 +1,37 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { ImageRing } from "@/lib/three/ImageRing";
 import { MomentumDraggable } from "@/lib/three/MomentumDraggable";
 import { MusicPlane } from "@/lib/three/MusicPlane";
+import { NFTModal } from "@/components/NFTModal";
 
 export default function Home() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [selectedNFT, setSelectedNFT] = useState<number | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const momentumPausedRef = useRef(false);
+
+  // Function to handle NFT selection
+  const handleNFTSelect = (imageIndex: number) => {
+    setSelectedNFT(imageIndex);
+    setIsModalOpen(true);
+    momentumPausedRef.current = true;
+  };
+
+  // Function to handle modal close
+  const handleModalClose = () => {
+    // First set the modal to closing state
+    setIsModalOpen(false);
+    setSelectedNFT(null);
+
+    // Wait a frame before resuming animation to ensure smooth transition
+    requestAnimationFrame(() => {
+      // Resume the animation loop
+      momentumPausedRef.current = false;
+    });
+  };
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -51,6 +75,7 @@ export default function Home() {
         yPosition: VERTICAL_OFFSET * index,
         depthOffset: DEPTH_OFFSET,
         isOdd: index % 2 === 0,
+        onDoubleClick: handleNFTSelect,
       });
     }
 
@@ -115,8 +140,13 @@ export default function Home() {
       camera.lookAt(0, 0, 0);
     }
 
-    function animate() {
+    function animate(currentTime: number) {
+      // Always request next frame to keep the loop alive
       requestAnimationFrame(animate);
+
+      // Only process animation if not paused
+      if (!momentumDraggable || momentumPausedRef.current) return;
+
       const originalDragOffset = momentumDraggable.getOffset();
       // Use raw values from momentum draggable
       const dragXOffset = originalDragOffset.x / 500;
@@ -185,23 +215,31 @@ export default function Home() {
       const mesh = getIntersectingObject(event);
       if (mesh) {
         for (const ring of rings.values()) {
-          ring.onClick();
+          ring.onClick(mesh);
         }
       }
+    };
+
+    // Add debug logging for click detection
+    const handleDoubleClick = (event: MouseEvent) => {
+      event.preventDefault();
+      console.log("Double click detected at application level");
     };
 
     window.addEventListener("resize", handleResize);
     canvas.addEventListener("mousemove", handleMouseMove);
     canvas.addEventListener("click", handleClick);
+    canvas.addEventListener("dblclick", handleDoubleClick); // Add double click listener for debugging
 
     init();
-    animate();
+    animate(0);
 
     // Cleanup
     return () => {
       window.removeEventListener("resize", handleResize);
       canvas.removeEventListener("mousemove", handleMouseMove);
       canvas.removeEventListener("click", handleClick);
+      canvas.removeEventListener("dblclick", handleDoubleClick);
       momentumDraggable.dispose();
       musicPlayer.dispose();
       renderer.dispose();
@@ -217,6 +255,11 @@ export default function Home() {
   return (
     <>
       <canvas id="bg" ref={canvasRef} />
+      <NFTModal
+        imageIndex={selectedNFT ?? 0}
+        isOpen={isModalOpen}
+        onClose={handleModalClose}
+      />
       <a
         href="https://warpcast.com/papa"
         target="_blank"
