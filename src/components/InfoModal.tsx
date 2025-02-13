@@ -1,17 +1,14 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
-import Image from "next/image";
-import { COLLECTION_ADDRESS, NFT_METADATA } from "@/config/nft-config";
 
-interface NFTModalProps {
-  imageIndex: number;
+interface InfoModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-export function NFTModal({ imageIndex, isOpen, onClose }: NFTModalProps) {
+export function InfoModal({ isOpen, onClose }: InfoModalProps) {
   const [mounted, setMounted] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
 
@@ -52,25 +49,12 @@ export function NFTModal({ imageIndex, isOpen, onClose }: NFTModalProps) {
 
   if (!mounted || (!isOpen && !isClosing)) return null;
 
-  const metadata = NFT_METADATA[imageIndex + 1];
-  if (!metadata) {
-    console.error(`No metadata found for image index ${imageIndex}`);
-    return null;
-  }
-
-  const zoraUrl = `https://zora.co/collect/base:${COLLECTION_ADDRESS}/${metadata.tokenId}`;
-
-  const handleMintClick = () => {
-    window.open(zoraUrl, "_blank");
-  };
-
   return createPortal(
     <div
       className={`fixed inset-0 z-50 flex items-center justify-center transition-opacity duration-200 ${
         isClosing ? "opacity-0" : "opacity-100"
       }`}
     >
-      {/* Backdrop */}
       <div
         className={`absolute inset-0 bg-black transition-opacity duration-200 ${
           isClosing ? "bg-opacity-0" : "bg-opacity-75"
@@ -78,9 +62,8 @@ export function NFTModal({ imageIndex, isOpen, onClose }: NFTModalProps) {
         onClick={handleClose}
       />
 
-      {/* Modal Content */}
       <div
-        className={`relative z-10 w-full max-w-md bg-white dark:bg-gray-900 rounded-lg shadow-xl overflow-hidden transform transition-all duration-200 ${
+        className={`relative z-10 w-full max-w-lg bg-white dark:bg-gray-900 rounded-lg shadow-xl overflow-hidden transform transition-all duration-200 ${
           isClosing ? "scale-95 opacity-0" : "scale-100 opacity-100"
         }`}
       >
@@ -105,31 +88,49 @@ export function NFTModal({ imageIndex, isOpen, onClose }: NFTModalProps) {
           </button>
         </div>
 
-        <div className="p-6 text-center">
-          {/* Preview Image */}
-          <div className="mb-6 rounded-lg overflow-hidden relative aspect-square">
-            <Image
-              src={`/${metadata.imageFile}`}
-              alt={metadata.title}
-              fill
-              className="object-cover"
-              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-              priority
-            />
+        <div className="p-8 text-center">
+          <div className="flex justify-center space-x-4 mb-6 text-4xl text-[#4caf50]">
+            <span>⬆</span>
           </div>
 
-          <h2 className="text-2xl font-bold mb-3 text-gray-900 dark:text-white">
-            {metadata.title}
+          <h2 className="text-3xl font-bold mb-6 text-gray-900 dark:text-white">
+            Higher Coded
           </h2>
-          <p className="text-gray-600 dark:text-gray-300 mb-8 whitespace-pre-line leading-relaxed">
-            {metadata.description}
+
+          <p className="text-gray-600 dark:text-gray-300 mb-6 leading-relaxed">
+            An art collection & viewing experience built on Base as part of a
+            Farcaster originated collective's vision to aim higher and inspire
+            commitment to the pursuit of authenticity, agency, optimism &
+            greatness.
           </p>
-          <button
-            onClick={handleMintClick}
-            className="w-full py-3 px-4 bg-[#4caf50] hover:bg-[#45a049] text-white font-semibold rounded-lg shadow-sm transition-colors"
-          >
-            Mint
-          </button>
+
+          <p className="text-gray-600 dark:text-gray-300 mb-8 leading-relaxed">
+            NFTs mintable on Zora garnering higher potential energy for an
+            upcoming music experience collaboration with anatu.
+          </p>
+
+          <div className="flex justify-center space-x-4">
+            <a
+              href="https://www.aimhigher.net/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-6 py-3 bg-[#4caf50] hover:bg-[#45a049] text-white font-semibold rounded-lg shadow-sm transition-colors"
+            >
+              △
+            </a>
+            <a
+              href="https://anatu.xyz"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-6 py-3 bg-[rgb(59,130,246)] hover:bg-[#2563eb] text-white font-semibold rounded-lg shadow-sm transition-colors"
+            >
+              △
+            </a>
+          </div>
+
+          <p className="mt-8 text-sm text-gray-500 dark:text-gray-400">
+            Double click any image to mint it
+          </p>
         </div>
       </div>
     </div>,

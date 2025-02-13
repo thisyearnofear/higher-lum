@@ -6,12 +6,14 @@ import { ImageRing } from "@/lib/three/ImageRing";
 import { MomentumDraggable } from "@/lib/three/MomentumDraggable";
 import { MusicPlane } from "@/lib/three/MusicPlane";
 import { NFTModal } from "@/components/NFTModal";
+import { InfoModal } from "@/components/InfoModal";
 
 export default function Home() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [selectedNFT, setSelectedNFT] = useState<number | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const momentumPausedRef = useRef(false);
+  const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
 
   // Function to handle NFT selection
   const handleNFTSelect = (imageIndex: number) => {
@@ -140,7 +142,7 @@ export default function Home() {
       camera.lookAt(0, 0, 0);
     }
 
-    function animate(currentTime: number) {
+    function animate() {
       // Always request next frame to keep the loop alive
       requestAnimationFrame(animate);
 
@@ -232,7 +234,7 @@ export default function Home() {
     canvas.addEventListener("dblclick", handleDoubleClick); // Add double click listener for debugging
 
     init();
-    animate(0);
+    animate();
 
     // Cleanup
     return () => {
@@ -260,6 +262,10 @@ export default function Home() {
         isOpen={isModalOpen}
         onClose={handleModalClose}
       />
+      <InfoModal
+        isOpen={isInfoModalOpen}
+        onClose={() => setIsInfoModalOpen(false)}
+      />
       <a
         href="https://warpcast.com/papa"
         target="_blank"
@@ -276,6 +282,13 @@ export default function Home() {
       >
         HIGHER
       </a>
+      <button
+        onClick={() => setIsInfoModalOpen(true)}
+        className="attribution info-button"
+        aria-label="Show information"
+      >
+        ⬆
+      </button>
     </>
   );
 }
