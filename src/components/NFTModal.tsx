@@ -104,7 +104,7 @@ export function NFTModal({ imageIndex, isOpen, onClose }: NFTModalProps) {
           </button>
         </div>
 
-        <div className="p-6">
+        <div className="p-6 text-center">
           {/* Preview Image */}
           <div className="mb-6 rounded-lg overflow-hidden">
             <img
@@ -114,17 +114,17 @@ export function NFTModal({ imageIndex, isOpen, onClose }: NFTModalProps) {
             />
           </div>
 
-          <h2 className="text-2xl font-bold mb-2 text-gray-900 dark:text-white">
+          <h2 className="text-2xl font-bold mb-3 text-gray-900 dark:text-white">
             {metadata.title}
           </h2>
-          <p className="text-gray-600 dark:text-gray-300 mb-6 whitespace-pre-line">
+          <p className="text-gray-600 dark:text-gray-300 mb-8 whitespace-pre-line leading-relaxed">
             {metadata.description}
           </p>
           <button
             onClick={handleMintClick}
             className="w-full py-3 px-4 bg-[#4caf50] hover:bg-[#45a049] text-white font-semibold rounded-lg shadow-sm transition-colors"
           >
-            Open Zora to Mint
+            Mint
           </button>
         </div>
       </div>
