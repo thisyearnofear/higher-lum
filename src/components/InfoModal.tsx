@@ -99,7 +99,7 @@ export function InfoModal({ isOpen, onClose }: InfoModalProps) {
 
           <p className="text-gray-600 dark:text-gray-300 mb-6 leading-relaxed">
             An art collection & viewing experience built on Base as part of a
-            Farcaster originated collective's vision to aim higher and inspire
+            Farcaster originated collectives vision to aim higher and inspire
             commitment to the pursuit of authenticity, agency, optimism &
             greatness.
           </p>
