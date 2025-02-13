@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { COLLECTION_ADDRESS, NFT_METADATA } from "@/config/nft-config";
 
 interface NFTModalProps {
   imageIndex: number;
@@ -26,14 +27,12 @@ export function NFTModal({ imageIndex, isOpen, onClose }: NFTModalProps) {
 
   const handleClose = () => {
     setIsClosing(true);
-    // Wait for animation to complete before actually closing
     setTimeout(() => {
       onClose();
       setIsClosing(false);
-    }, 150); // Slightly faster transition for better responsiveness
+    }, 150);
   };
 
-  // Handle escape key
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -52,13 +51,13 @@ export function NFTModal({ imageIndex, isOpen, onClose }: NFTModalProps) {
 
   if (!mounted || (!isOpen && !isClosing)) return null;
 
-  console.log("NFTModal rendering with image index:", imageIndex);
+  const metadata = NFT_METADATA[imageIndex + 1];
+  if (!metadata) {
+    console.error(`No metadata found for image index ${imageIndex}`);
+    return null;
+  }
 
-  // Construct Zora URL for the specific NFT
-  const COLLECTION_ADDRESS = "0x1dd4245bc6b1bbd43caf9a5033e887067852123d";
-  const zoraUrl = `https://zora.co/collect/base:${COLLECTION_ADDRESS}/${
-    imageIndex + 1
-  }`;
+  const zoraUrl = `https://zora.co/collect/base:${COLLECTION_ADDRESS}/${metadata.tokenId}`;
 
   const handleMintClick = () => {
     window.open(zoraUrl, "_blank");
@@ -109,18 +108,17 @@ export function NFTModal({ imageIndex, isOpen, onClose }: NFTModalProps) {
           {/* Preview Image */}
           <div className="mb-6 rounded-lg overflow-hidden">
             <img
-              src={`/image-${imageIndex + 1}.jpg`}
-              alt={`NFT #${imageIndex + 1}`}
+              src={`/${metadata.imageFile}`}
+              alt={metadata.title}
               className="w-full h-auto"
             />
           </div>
 
-          <h2 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">
-            Mint this NFT
+          <h2 className="text-2xl font-bold mb-2 text-gray-900 dark:text-white">
+            {metadata.title}
           </h2>
-          <p className="text-gray-600 dark:text-gray-300 mb-6">
-            You're about to mint image #{imageIndex + 1} from the HIGHER
-            collection.
+          <p className="text-gray-600 dark:text-gray-300 mb-6 whitespace-pre-line">
+            {metadata.description}
           </p>
           <button
             onClick={handleMintClick}
