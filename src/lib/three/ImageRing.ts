@@ -2,6 +2,8 @@ import { Freezable } from "./Freezable";
 import { ImagePlane } from "./ImagePlane";
 import { FloatingArrow } from "./FloatingArrow";
 import * as THREE from "three";
+import { NFTMetadata } from "@/types/nft-types";
+import { getBestImageUrl } from "@/services/nftService";
 
 interface ImageRingConfig {
   angleOffset: number;
@@ -10,6 +12,8 @@ interface ImageRingConfig {
   depthOffset: number;
   isOdd?: boolean;
   onDoubleClick?: (imageIndex: number) => void;
+  nftMetadata?: NFTMetadata[]; // Optional NFT metadata for on-chain mode
+  darkMode?: boolean; // For on-chain mode arrows
 }
 
 export class ImageRing extends Freezable {
@@ -21,6 +25,9 @@ export class ImageRing extends Freezable {
   private lastClickTime: number = 0;
   private readonly DOUBLE_CLICK_DELAY = 300; // ms
   private readonly onDoubleClick?: (imageIndex: number) => void;
+  private isNftMode: boolean = false;
+  private nftMetadata?: NFTMetadata[];
+  private darkMode: boolean = false;
 
   constructor({
     angleOffset,
@@ -29,21 +36,43 @@ export class ImageRing extends Freezable {
     yPosition,
     depthOffset,
     onDoubleClick,
+    nftMetadata,
+    darkMode = false,
   }: ImageRingConfig) {
     super();
     const anglePiece = 360 / imagePaths.length;
+    this.isNftMode = !!nftMetadata && nftMetadata.length > 0;
+    this.nftMetadata = nftMetadata;
+    this.darkMode = darkMode;
 
     // Create images
-    this.images = imagePaths.map(
-      (imagePath, index) =>
-        new ImagePlane({
-          imagePath,
-          width: 800,
-          height: 800,
-          angle: anglePiece * index,
-          worldPoint: new THREE.Vector3(0, 0, depthOffset),
-        })
-    );
+    if (this.isNftMode && nftMetadata) {
+      // Use NFT metadata for images
+      this.images = nftMetadata.map(
+        (nft, index) =>
+          new ImagePlane({
+            imagePath: getBestImageUrl(nft),
+            width: 800,
+            height: 800,
+            angle: anglePiece * index,
+            worldPoint: new THREE.Vector3(0, 0, depthOffset),
+            isNft: true,
+            nftId: nft.id,
+          })
+      );
+    } else {
+      // Use local images
+      this.images = imagePaths.map(
+        (imagePath, index) =>
+          new ImagePlane({
+            imagePath,
+            width: 800,
+            height: 800,
+            angle: anglePiece * index,
+            worldPoint: new THREE.Vector3(0, 0, depthOffset),
+          })
+      );
+    }
 
     // Create arrows between images
     this.arrows = imagePaths.map((_, index) => {
@@ -51,11 +80,32 @@ export class ImageRing extends Freezable {
       const radians = (angle * Math.PI) / 180;
       const radius = depthOffset * 0.5; // Closer to center
 
-      return new FloatingArrow({
+      const arrow = new FloatingArrow({
         x: Math.cos(radians) * radius,
         y: 0,
         z: Math.sin(radians) * radius,
       });
+
+      // Set arrow color if in dark mode
+      if (this.darkMode) {
+        const arrowMesh = arrow.getMesh();
+        if (
+          arrowMesh &&
+          arrowMesh.material instanceof THREE.MeshBasicMaterial
+        ) {
+          arrowMesh.material.color.set(0x333333);
+        }
+
+        const secondaryMesh = arrow.getSecondaryMesh();
+        if (
+          secondaryMesh &&
+          secondaryMesh.material instanceof THREE.MeshBasicMaterial
+        ) {
+          secondaryMesh.material.color.set(0x333333);
+        }
+      }
+
+      return arrow;
     });
 
     this.group = new THREE.Group();
@@ -65,6 +115,14 @@ export class ImageRing extends Freezable {
       mesh.rotation.set(0, 0, 0);
       mesh.scale.set(1.5, 1.5, 1.5);
       this.group.add(mesh);
+
+      // Add secondary arrow if it exists
+      const secondaryMesh = arrow.getSecondaryMesh();
+      if (secondaryMesh) {
+        secondaryMesh.rotation.set(0, 0, 0);
+        secondaryMesh.scale.set(1.5, 1.5, 1.5);
+        this.group.add(secondaryMesh);
+      }
     });
 
     this.group.position.set(0, yPosition, 0);
@@ -109,20 +167,31 @@ export class ImageRing extends Freezable {
 
     const currentTime = Date.now();
     const timeDiff = currentTime - this.lastClickTime;
-    console.log("Click detected, time diff:", timeDiff);
 
     if (timeDiff < this.DOUBLE_CLICK_DELAY) {
       // Double click detected
-      console.log("Double click detected in ImageRing");
+      // First check if the mesh itself is an NFT
+      if (mesh.userData && mesh.userData.isNFT) {
+        const imageIndex = this.images.findIndex(
+          (plane) => plane.getMesh().userData.nftId === mesh.userData.nftId
+        );
+
+        if (imageIndex !== -1 && this.onDoubleClick) {
+          this.onDoubleClick(imageIndex);
+          this.lastClickTime = 0; // Reset to prevent triple-click
+          return;
+        }
+      }
+
+      // If not found directly, check if it's a child of an image plane
       const imagePlane = this.images.find(
         (plane) =>
-          plane.getMesh() === mesh || plane.getMesh().children.includes(mesh)
+          plane.getMesh() === mesh ||
+          (plane.getMesh().children && plane.getMesh().children.includes(mesh))
       );
 
       if (imagePlane) {
-        console.log("Found matching image plane");
         const imageIndex = this.images.indexOf(imagePlane);
-        console.log("Image index:", imageIndex);
         if (this.onDoubleClick) {
           this.onDoubleClick(imageIndex);
         }
@@ -133,5 +202,31 @@ export class ImageRing extends Freezable {
 
     // Also trigger normal click behavior
     this.images.forEach((image) => image.onClick());
+  }
+
+  public dispose(): void {
+    // Clean up resources
+    this.images.forEach((image) => {
+      const mesh = image.getMesh();
+      if (mesh.material instanceof THREE.MeshBasicMaterial) {
+        if (mesh.material.map) {
+          mesh.material.map.dispose();
+        }
+        mesh.material.dispose();
+      }
+      mesh.geometry.dispose();
+    });
+
+    // Clean up arrow resources
+    this.arrows.forEach((arrow) => {
+      const mesh = arrow.getMesh();
+      if (mesh.material instanceof THREE.MeshBasicMaterial) {
+        mesh.material.dispose();
+      }
+      mesh.geometry.dispose();
+    });
+
+    this.images = [];
+    this.arrows = [];
   }
 }

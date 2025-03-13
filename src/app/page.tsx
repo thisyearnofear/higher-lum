@@ -7,6 +7,9 @@ import { MomentumDraggable } from "@/lib/three/MomentumDraggable";
 import { MusicPlane } from "@/lib/three/MusicPlane";
 import { NFTModal } from "@/components/NFTModal";
 import { InfoModal } from "@/components/InfoModal";
+import { checkNFTsReady, fetchNFTsFromGrove } from "@/services/nftService";
+import { isContractReady } from "@/services/contract";
+import { COLLECTION_ADDRESS } from "@/config/nft-config";
 
 export default function Home() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -14,6 +17,18 @@ export default function Home() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const momentumPausedRef = useRef(false);
   const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
+
+  // State for the Higher button and on-chain experience
+  const [higherButtonReady, setHigherButtonReady] = useState(false);
+  const [isHigherLoading, setIsHigherLoading] = useState(true);
+  const [isOnChainMode, setIsOnChainMode] = useState(false);
+  const [nftMetadata, setNftMetadata] = useState<any[]>([]);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const ringsRef = useRef<Map<number, ImageRing>>(new Map());
+  const transitionInProgressRef = useRef(false);
+  const [loadingProgress, setLoadingProgress] = useState(0);
 
   // Function to handle NFT selection
   const handleNFTSelect = (imageIndex: number) => {
@@ -35,25 +50,144 @@ export default function Home() {
     });
   };
 
+  // Function to transition to on-chain experience
+  const transitionToOnChain = async () => {
+    if (!higherButtonReady || transitionInProgressRef.current) return;
+
+    transitionInProgressRef.current = true;
+    console.log("Starting transition to on-chain mode");
+
+    try {
+      // Fetch NFT data if not already loaded
+      if (nftMetadata.length === 0) {
+        // Start loading animation
+        setLoadingProgress(10);
+        console.log("Fetching NFT data...");
+
+        // Check if contract is ready
+        const contractReady = await isContractReady();
+        if (!contractReady) {
+          console.error("Contract is not ready");
+          transitionInProgressRef.current = false;
+          return;
+        }
+
+        setLoadingProgress(30);
+
+        // Pre-fetch NFT data - this loads the metadata but uses local images
+        const nfts = await fetchNFTsFromGrove(COLLECTION_ADDRESS);
+        console.log(`Fetched ${nfts.length} NFTs from Grove`);
+        setLoadingProgress(80);
+        setNftMetadata(nfts);
+        setLoadingProgress(100);
+      }
+
+      // Change background color with transition
+      if (sceneRef.current) {
+        // Animate background color change
+        const startColor = new THREE.Color(0xffffff);
+        const endColor = new THREE.Color(0x0a0a0a);
+        const duration = 1000; // ms
+        const startTime = Date.now();
+
+        const animateBackgroundColor = () => {
+          const elapsed = Date.now() - startTime;
+          const progress = Math.min(elapsed / duration, 1);
+
+          const currentColor = new THREE.Color().lerpColors(
+            startColor,
+            endColor,
+            progress
+          );
+
+          if (sceneRef.current) {
+            sceneRef.current.background = currentColor;
+          }
+
+          if (progress < 1) {
+            requestAnimationFrame(animateBackgroundColor);
+          } else {
+            // Transition complete - now set the on-chain mode flag
+            console.log(
+              "Background transition complete, switching to on-chain mode"
+            );
+            setIsOnChainMode(true);
+            transitionInProgressRef.current = false;
+          }
+        };
+
+        animateBackgroundColor();
+      } else {
+        console.log("No scene reference, setting on-chain mode directly");
+        setIsOnChainMode(true);
+        transitionInProgressRef.current = false;
+      }
+    } catch (error) {
+      console.error("Error transitioning to on-chain mode:", error);
+      transitionInProgressRef.current = false;
+    }
+  };
+
+  // Check if Higher button should be ready
+  useEffect(() => {
+    const checkReady = async () => {
+      setIsHigherLoading(true);
+
+      try {
+        // Start loading animation
+        setLoadingProgress(0);
+
+        // Check if NFTs are ready
+        const isReady = await checkNFTsReady();
+        setLoadingProgress(50);
+
+        // Check if contract is ready
+        const contractReady = await isContractReady();
+        setLoadingProgress(100);
+
+        // Only set button ready if both checks pass
+        setHigherButtonReady(isReady && contractReady);
+      } catch (error) {
+        console.error("Error checking readiness:", error);
+        setHigherButtonReady(false);
+      } finally {
+        setIsHigherLoading(false);
+      }
+    };
+
+    checkReady();
+  }, []);
+
   useEffect(() => {
     if (!canvasRef.current) return;
 
     const canvas = canvasRef.current;
     const scene = new THREE.Scene();
+    sceneRef.current = scene;
     const camera = new THREE.PerspectiveCamera(
       75,
       window.innerWidth / window.innerHeight,
       0.1,
       1000
     );
+    cameraRef.current = camera;
+
+    // Remove the global TextureLoader override as it's causing issues
+    // Instead, we'll handle texture settings in each component
+
     const renderer = new THREE.WebGLRenderer({
       canvas,
       antialias: true,
       alpha: true,
     });
+    rendererRef.current = renderer;
 
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Limit pixel ratio for better performance
     renderer.setSize(window.innerWidth, window.innerHeight);
+
+    // Fix WebGL texture issues
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+
     camera.position.setZ(30);
 
     const momentumDraggable = new MomentumDraggable(canvas);
@@ -69,16 +203,32 @@ export default function Home() {
     let lastScrollOffset = 0;
 
     const rings = new Map<number, ImageRing>();
+    ringsRef.current = rings;
 
     function createRing(index: number): ImageRing {
-      return new ImageRing({
-        angleOffset: 20 * index,
-        imagePaths,
-        yPosition: VERTICAL_OFFSET * index,
-        depthOffset: DEPTH_OFFSET,
-        isOdd: index % 2 === 0,
-        onDoubleClick: handleNFTSelect,
-      });
+      if (isOnChainMode && nftMetadata.length > 0) {
+        // Create ring with NFT metadata
+        return new ImageRing({
+          angleOffset: 20 * index,
+          imagePaths: Array(nftMetadata.length).fill(""), // Placeholder, not used
+          yPosition: VERTICAL_OFFSET * index,
+          depthOffset: DEPTH_OFFSET,
+          isOdd: index % 2 === 0,
+          onDoubleClick: handleNFTSelect,
+          nftMetadata: nftMetadata,
+          darkMode: true,
+        });
+      } else {
+        // Create regular ring with local images
+        return new ImageRing({
+          angleOffset: 20 * index,
+          imagePaths,
+          yPosition: VERTICAL_OFFSET * index,
+          depthOffset: DEPTH_OFFSET,
+          isOdd: index % 2 === 0,
+          onDoubleClick: handleNFTSelect,
+        });
+      }
     }
 
     // Initialize first set of rings
@@ -113,20 +263,26 @@ export default function Home() {
             newRings.set(i, rings.get(i)!);
             rings.delete(i);
           } else {
+            // Create new ring
             const ring = createRing(i);
             newRings.set(i, ring);
+            const scene = sceneRef.current as THREE.Scene;
             scene.add(ring.getGroup());
           }
         }
 
-        for (const ring of rings.values()) {
+        // Remove old rings from the scene
+        for (const [index, ring] of rings.entries()) {
+          const scene = sceneRef.current as THREE.Scene;
           scene.remove(ring.getGroup());
+          ring.dispose();
         }
 
         rings.clear();
         for (const [index, ring] of newRings) {
           rings.set(index, ring);
         }
+
         currentRingIndex = baseIndex;
       }
     }
@@ -158,6 +314,7 @@ export default function Home() {
       const cameraY = dragYOffset + (VISIBLE_RINGS * VERTICAL_OFFSET) / 2;
       camera.position.y = cameraY;
 
+      // Update rings based on camera position
       updateRings(cameraY);
 
       const rawSpeed = dragYOffset - lastScrollOffset;
@@ -173,12 +330,22 @@ export default function Home() {
 
       lastScrollOffset = dragYOffset;
 
+      // Update all rings with the calculated speed
       for (const ring of rings.values()) {
-        ring.update(amplifiedSpeed);
+        if (ring) {
+          ring.update(amplifiedSpeed);
+        }
       }
-      musicPlayer.update(camera);
 
-      renderer.render(scene, camera);
+      // Update music player
+      if (musicPlayer) {
+        musicPlayer.update(camera);
+      }
+
+      // Render the scene
+      if (renderer && scene && camera) {
+        renderer.render(scene, camera);
+      }
     }
 
     function getIntersectingObject(event: MouseEvent) {
@@ -199,16 +366,24 @@ export default function Home() {
 
     // Event Listeners
     const handleResize = () => {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
+      if (camera) {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+      }
+      if (renderer) {
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      }
     };
 
     const handleMouseMove = (event: MouseEvent) => {
       event.preventDefault();
       const mesh = getIntersectingObject(event);
+
+      // Pass mouse move event to all rings
       for (const ring of rings.values()) {
-        ring.onMouseMove(mesh);
+        if (ring) {
+          ring.onMouseMove(mesh);
+        }
       }
     };
 
@@ -216,22 +391,18 @@ export default function Home() {
       event.preventDefault();
       const mesh = getIntersectingObject(event);
       if (mesh) {
+        // Pass the click to all rings
         for (const ring of rings.values()) {
-          ring.onClick(mesh);
+          if (ring) {
+            ring.onClick(mesh);
+          }
         }
       }
-    };
-
-    // Add debug logging for click detection
-    const handleDoubleClick = (event: MouseEvent) => {
-      event.preventDefault();
-      console.log("Double click detected at application level");
     };
 
     window.addEventListener("resize", handleResize);
     canvas.addEventListener("mousemove", handleMouseMove);
     canvas.addEventListener("click", handleClick);
-    canvas.addEventListener("dblclick", handleDoubleClick); // Add double click listener for debugging
 
     init();
     animate();
@@ -241,18 +412,19 @@ export default function Home() {
       window.removeEventListener("resize", handleResize);
       canvas.removeEventListener("mousemove", handleMouseMove);
       canvas.removeEventListener("click", handleClick);
-      canvas.removeEventListener("dblclick", handleDoubleClick);
       momentumDraggable.dispose();
       musicPlayer.dispose();
       renderer.dispose();
 
       // Clean up rings
       for (const ring of rings.values()) {
+        const scene = sceneRef.current as THREE.Scene;
         scene.remove(ring.getGroup());
+        ring.dispose();
       }
       rings.clear();
     };
-  }, []);
+  }, [isOnChainMode, nftMetadata]);
 
   return (
     <>
@@ -261,6 +433,8 @@ export default function Home() {
         imageIndex={selectedNFT ?? 0}
         isOpen={isModalOpen}
         onClose={handleModalClose}
+        isOnChainMode={isOnChainMode}
+        onChainNFTs={nftMetadata}
       />
       <InfoModal
         isOpen={isInfoModalOpen}
@@ -274,14 +448,29 @@ export default function Home() {
       >
         papa
       </a>
-      <a
-        href="https://warpcast.com/~/channel/higher"
-        target="_blank"
-        rel="noopener"
-        className="attribution higher-link"
-      >
-        HIGHER
-      </a>
+      {isHigherLoading ? (
+        <div
+          className="attribution higher-link loading"
+          style={{ minWidth: "100px" }}
+        >
+          <span>HIGHER</span>
+          <span className="loading-text ml-2">{loadingProgress}%</span>
+        </div>
+      ) : (
+        <button
+          onClick={transitionToOnChain}
+          className={`attribution higher-link ${
+            higherButtonReady ? "ready" : "loading"
+          }`}
+          disabled={!higherButtonReady}
+          style={{ minWidth: "100px" }}
+        >
+          HIGHER
+          {!higherButtonReady && (
+            <span className="loading-text ml-2">{loadingProgress}%</span>
+          )}
+        </button>
+      )}
       <button
         onClick={() => setIsInfoModalOpen(true)}
         className="attribution info-button"

@@ -1,46 +1,45 @@
 import * as THREE from "three";
 import { Animation } from "../animation/Animation";
 import { Freezable } from "./Freezable";
+import { NFTMetadata } from "@/types/nft-types";
+import { getBestImageUrl } from "@/services/nftService";
 
-interface ImagePlaneConfig {
-  imagePath: string;
+interface OnChainImagePlaneConfig {
+  nft: NFTMetadata;
   width: number;
   height: number;
   angle: number;
   worldPoint?: THREE.Vector3;
-  isNft?: boolean;
-  nftId?: string;
 }
 
 // Cache for loaded textures to improve performance and prevent reloading
 const textureCache = new Map<string, THREE.Texture>();
 
-export class ImagePlane extends Freezable {
+export class OnChainImagePlane extends Freezable {
   private mesh: THREE.Mesh<
     THREE.CylinderGeometry,
     THREE.MeshBasicMaterial | THREE.MeshBasicMaterial[]
   >;
   private scaleAnimation: Animation;
   private isHovered: boolean = false;
-  private isNft: boolean = false;
-  private nftId?: string;
+  private nft: NFTMetadata;
 
-  constructor(config: ImagePlaneConfig) {
+  constructor(config: OnChainImagePlaneConfig) {
     super();
-    const { imagePath, angle, worldPoint, isNft = false, nftId } = config;
-    this.isNft = isNft;
-    this.nftId = nftId;
+    const { nft, width, height, angle, worldPoint } = config;
+    this.nft = nft;
 
-    // Check if this is a Grove URL
-    const isGroveUrl = imagePath.includes("api.grove.storage");
+    // Get the best image URL from the NFT metadata
+    const imageUrl = getBestImageUrl(nft);
+    const isGroveUrl = imageUrl.includes("api.grove.storage");
 
-    // Create a custom texture loader for local images
+    // Create a custom texture loader
     const loader = new THREE.TextureLoader();
     loader.crossOrigin = "anonymous";
 
     // Check cache first
-    if (textureCache.has(imagePath)) {
-      const texture = textureCache.get(imagePath)!;
+    if (textureCache.has(imageUrl)) {
+      const texture = textureCache.get(imageUrl)!;
       const material = new THREE.MeshBasicMaterial({
         map: texture,
         side: THREE.DoubleSide,
@@ -59,12 +58,7 @@ export class ImagePlane extends Freezable {
       geometry.rotateY(Math.PI / 1);
 
       this.mesh = new THREE.Mesh(geometry, material);
-
-      // Add NFT metadata to userData if this is an NFT
-      if (this.isNft && this.nftId) {
-        this.mesh.userData = { isNFT: true, nftId: this.nftId };
-      }
-
+      this.mesh.userData = { isNFT: true, nftId: nft.id };
       this.rotateMeshFromWorldPoint(angle, "y");
     } else {
       // Create placeholder material
@@ -86,22 +80,17 @@ export class ImagePlane extends Freezable {
       geometry.rotateY(Math.PI / 1);
 
       this.mesh = new THREE.Mesh(geometry, placeholderMaterial);
-
-      // Add NFT metadata to userData if this is an NFT
-      if (this.isNft && this.nftId) {
-        this.mesh.userData = { isNFT: true, nftId: this.nftId };
-      }
-
+      this.mesh.userData = { isNFT: true, nftId: nft.id };
       this.rotateMeshFromWorldPoint(angle, "y");
 
       // Load the texture
       loader.load(
-        imagePath,
+        imageUrl,
         (texture) => {
           // Configure texture based on source
           if (isGroveUrl) {
             // For Grove URLs, we need to set flipY to false
-            texture.flipY = false;
+            texture.flipY = true;
           } else {
             // For local images, keep flipY true
             texture.flipY = true;
@@ -111,17 +100,43 @@ export class ImagePlane extends Freezable {
           texture.needsUpdate = true;
 
           // Store in cache
-          textureCache.set(imagePath, texture);
+          textureCache.set(imageUrl, texture);
 
           // Create a new material with the texture
           this.mesh.material = new THREE.MeshBasicMaterial({
             map: texture,
             side: THREE.DoubleSide,
           });
+
+          console.log(
+            `Loaded texture for NFT ${nft.id} from ${imageUrl.substring(
+              0,
+              50
+            )}...`
+          );
         },
-        undefined,
+        // Progress callback
+        (xhr) => {
+          // This is called while the texture is loading
+          if (xhr.lengthComputable) {
+            const percentComplete = (xhr.loaded / xhr.total) * 100;
+            console.log(
+              `Loading NFT ${nft.id}: ${Math.round(percentComplete)}% complete`
+            );
+          }
+        },
+        // Error callback
         (error) => {
-          console.error(`Error loading texture from ${imagePath}:`, error);
+          console.error(
+            `Error loading texture for NFT ${nft.id} from ${imageUrl}:`,
+            error
+          );
+
+          // Fallback to a placeholder color on error
+          this.mesh.material = new THREE.MeshBasicMaterial({
+            color: 0x333333,
+            side: THREE.DoubleSide,
+          });
         }
       );
     }
@@ -214,5 +229,31 @@ export class ImagePlane extends Freezable {
     }
 
     obj.rotateOnAxis(vectorAxis, theta);
+  }
+
+  public dispose(): void {
+    if (this.mesh.geometry) {
+      this.mesh.geometry.dispose();
+    }
+
+    if (this.mesh.material instanceof THREE.MeshBasicMaterial) {
+      // Don't dispose textures that are in the cache
+      if (
+        this.mesh.material.map &&
+        !textureCache.has(this.mesh.material.map.source.data)
+      ) {
+        this.mesh.material.map.dispose();
+      }
+      this.mesh.material.dispose();
+    } else if (Array.isArray(this.mesh.material)) {
+      this.mesh.material.forEach((material) => {
+        if (material instanceof THREE.MeshBasicMaterial) {
+          if (material.map && !textureCache.has(material.map.source.data)) {
+            material.map.dispose();
+          }
+          material.dispose();
+        }
+      });
+    }
   }
 }

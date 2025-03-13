@@ -90,7 +90,10 @@ export function InfoModal({ isOpen, onClose }: InfoModalProps) {
 
         <div className="p-8 text-center">
           <div className="flex justify-center space-x-4 mb-6 text-4xl text-[#4caf50]">
+            <span>↑</span>
+            <span>△</span>
             <span>⬆</span>
+            <span>⤴︎</span>
           </div>
 
           <h2 className="text-3xl font-bold mb-6 text-gray-900 dark:text-white">
@@ -99,7 +102,7 @@ export function InfoModal({ isOpen, onClose }: InfoModalProps) {
 
           <p className="text-gray-600 dark:text-gray-300 mb-6 leading-relaxed">
             An art collection & viewing experience built on Base as part of a
-            Farcaster originated collectives vision to aim higher and inspire
+            Farcaster originated collective's vision to aim higher and inspire
             commitment to the pursuit of authenticity, agency, optimism &
             greatness.
           </p>
@@ -109,6 +112,31 @@ export function InfoModal({ isOpen, onClose }: InfoModalProps) {
             upcoming music experience collaboration with anatu.
           </p>
 
+          <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg mb-6">
+            <h3 className="text-lg font-semibold mb-2 text-gray-900 dark:text-white">
+              How to Use
+            </h3>
+            <ul className="text-left text-gray-600 dark:text-gray-300 space-y-2">
+              <li className="flex items-start">
+                <span className="mr-2 text-[#4caf50]">•</span>
+                <span>Double click any image to mint it</span>
+              </li>
+              <li className="flex items-start">
+                <span className="mr-2 text-[#4caf50]">•</span>
+                <span>
+                  Wait for the "HIGHER" button to fill and glow to access the
+                  on-chain NFT experience
+                </span>
+              </li>
+              <li className="flex items-start">
+                <span className="mr-2 text-[#4caf50]">•</span>
+                <span>
+                  Click and drag to navigate through the immersive gallery
+                </span>
+              </li>
+            </ul>
+          </div>
+
           <div className="flex justify-center space-x-4">
             <a
               href="https://www.aimhigher.net/"
@@ -116,21 +144,17 @@ export function InfoModal({ isOpen, onClose }: InfoModalProps) {
               rel="noopener noreferrer"
               className="px-6 py-3 bg-[#4caf50] hover:bg-[#45a049] text-white font-semibold rounded-lg shadow-sm transition-colors"
             >
-              △
+              Aim Higher
             </a>
             <a
               href="https://anatu.xyz"
               target="_blank"
               rel="noopener noreferrer"
-              className="px-6 py-3 bg-[rgb(59,130,246)] hover:bg-[#2563eb] text-white font-semibold rounded-lg shadow-sm transition-colors"
+              className="px-6 py-3 bg-[#3b82f6] hover:bg-[#2563eb] text-white font-semibold rounded-lg shadow-sm transition-colors"
             >
-              △
+              anatu
             </a>
           </div>
-
-          <p className="mt-8 text-sm text-gray-500 dark:text-gray-400">
-            Double click any image to mint it
-          </p>
         </div>
       </div>
     </div>,

@@ -9,12 +9,12 @@ import {
 import { WagmiProvider } from "wagmi";
 import { mainnet } from "wagmi/chains";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { baseMainnet } from "@/config/wallet-config";
+import { baseSepolia } from "@/config/wallet-config";
 
 const config = getDefaultConfig({
   appName: "Higher-Coded",
   projectId: "bb610aae7a8414e57b6186fc724ef657",
-  chains: [baseMainnet, mainnet],
+  chains: [baseSepolia, mainnet],
   ssr: true,
 });
 
