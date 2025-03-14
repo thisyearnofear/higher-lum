@@ -101,10 +101,10 @@ export function InfoModal({ isOpen, onClose }: InfoModalProps) {
           </h2>
 
           <p className="text-gray-600 dark:text-gray-300 mb-6 leading-relaxed">
-            An art collection & viewing experience built on Base as part of a
-            Farcaster originated collective's vision to aim higher and inspire
-            commitment to the pursuit of authenticity, agency, optimism &
-            greatness.
+            An art collection &amp; viewing experience built on Base as part of
+            a Farcaster originated collective&apos;s vision to aim higher and
+            inspire commitment to the pursuit of authenticity, agency, optimism
+            &amp; greatness.
           </p>
 
           <p className="text-gray-600 dark:text-gray-300 mb-8 leading-relaxed">
@@ -124,8 +124,8 @@ export function InfoModal({ isOpen, onClose }: InfoModalProps) {
               <li className="flex items-start">
                 <span className="mr-2 text-[#4caf50]">•</span>
                 <span>
-                  Wait for the "HIGHER" button to fill and glow to access the
-                  on-chain NFT experience
+                  Wait for the &quot;HIGHER&quot; button to fill and glow to
+                  access the on-chain NFT experience
                 </span>
               </li>
               <li className="flex items-start">

@@ -22,13 +22,7 @@ export function loadTexture(
   // Set the loader's path
   loader.setPath("");
 
-  // Configure load options
-  const loadOptions = {
-    flipY: true,
-    premultiplyAlpha: true,
-  };
-
-  // Load the texture with proper configuration
+  // Load the texture
   loader.load(
     url,
     (texture) => {

@@ -27,7 +27,7 @@ export class ImagePlane extends Freezable {
 
   constructor(config: ImagePlaneConfig) {
     super();
-    const { imagePath, angle, worldPoint, isNft = false, nftId } = config;
+    const { imagePath, angle, isNft = false, nftId } = config;
     this.isNft = isNft;
     this.nftId = nftId;
 

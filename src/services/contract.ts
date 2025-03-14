@@ -78,7 +78,9 @@ function getContractInstance() {
 }
 
 // Helper function to fetch and parse IPFS metadata
-async function fetchIPFSMetadata(uri: string): Promise<any> {
+async function fetchIPFSMetadata(
+  uri: string
+): Promise<Record<string, unknown>> {
   try {
     // Convert IPFS URI to HTTP URL if needed
     let url = uri;
@@ -229,7 +231,7 @@ export async function getOriginalById(id: number): Promise<OriginalNFT> {
 
       // Extract Grove URL from metadata
       let groveUrl = "";
-      if (metadata.image) {
+      if (typeof metadata.image === "string") {
         const hash = extractGroveHash(metadata.image);
         if (hash) groveUrl = hash;
         // If the image is a direct Grove URL
@@ -240,11 +242,18 @@ export async function getOriginalById(id: number): Promise<OriginalNFT> {
 
       return {
         tokenId: id,
-        creator: metadata.creator || "0x1234...5678", // Use metadata.creator if available
+        creator:
+          typeof metadata.creator === "string"
+            ? metadata.creator
+            : "0x1234...5678", // Use metadata.creator if available
         groveUrl,
         tokenURI,
-        overlayType: metadata.overlayType || "none",
-        editionCount: metadata.editionCount || 0,
+        overlayType:
+          typeof metadata.overlayType === "string"
+            ? metadata.overlayType
+            : "none",
+        editionCount:
+          typeof metadata.editionCount === "number" ? metadata.editionCount : 0,
       };
     } catch (metadataError) {
       console.error(`Error fetching metadata for token ${id}:`, metadataError);

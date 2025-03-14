@@ -26,7 +26,7 @@ export class OnChainImagePlane extends Freezable {
 
   constructor(config: OnChainImagePlaneConfig) {
     super();
-    const { nft, width, height, angle, worldPoint } = config;
+    const { nft } = config;
     this.nft = nft;
 
     // Get the best image URL from the NFT metadata
@@ -59,7 +59,7 @@ export class OnChainImagePlane extends Freezable {
 
       this.mesh = new THREE.Mesh(geometry, material);
       this.mesh.userData = { isNFT: true, nftId: nft.id };
-      this.rotateMeshFromWorldPoint(angle, "y");
+      this.rotateMeshFromWorldPoint(config.angle, "y");
     } else {
       // Create placeholder material
       const placeholderMaterial = new THREE.MeshBasicMaterial({
@@ -81,7 +81,7 @@ export class OnChainImagePlane extends Freezable {
 
       this.mesh = new THREE.Mesh(geometry, placeholderMaterial);
       this.mesh.userData = { isNFT: true, nftId: nft.id };
-      this.rotateMeshFromWorldPoint(angle, "y");
+      this.rotateMeshFromWorldPoint(config.angle, "y");
 
       // Load the texture
       loader.load(

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import * as THREE from "three";
 import { ImageRing } from "@/lib/three/ImageRing";
 import { MomentumDraggable } from "@/lib/three/MomentumDraggable";
@@ -10,6 +10,7 @@ import { InfoModal } from "@/components/InfoModal";
 import { checkNFTsReady, fetchNFTsFromGrove } from "@/services/nftService";
 import { isContractReady } from "@/services/contract";
 import { COLLECTION_ADDRESS } from "@/config/nft-config";
+import { NFTMetadata } from "@/types/nft-types";
 
 export default function Home() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -22,14 +23,13 @@ export default function Home() {
   const [higherButtonReady, setHigherButtonReady] = useState(false);
   const [isHigherLoading, setIsHigherLoading] = useState(false);
   const [isOnChainMode, setIsOnChainMode] = useState(false);
-  const [nftMetadata, setNftMetadata] = useState<any[]>([]);
+  const [nftMetadata, setNftMetadata] = useState<NFTMetadata[]>([]);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const ringsRef = useRef<Map<number, ImageRing>>(new Map());
   const musicPlayerRef = useRef<MusicPlane | null>(null);
   const transitionInProgressRef = useRef(false);
-  const [loadingProgress, setLoadingProgress] = useState(0);
   const [transitionLoadingProgress, setTransitionLoadingProgress] = useState(0);
 
   // Animation state refs
@@ -41,42 +41,45 @@ export default function Home() {
   const VERTICAL_OFFSET = 0.5;
   const VISIBLE_RINGS = 100;
 
-  // Function to create a ring
-  function createRing(index: number): ImageRing {
-    if (isOnChainMode && nftMetadata.length > 0) {
-      // Create ring with NFT metadata
-      return new ImageRing({
-        angleOffset: 20 * index,
-        imagePaths: Array(nftMetadata.length).fill(""), // Placeholder, not used
-        yPosition: VERTICAL_OFFSET * index,
-        depthOffset: DEPTH_OFFSET,
-        isOdd: index % 2 === 0,
-        onDoubleClick: handleNFTSelect,
-        nftMetadata: nftMetadata,
-        darkMode: true,
-      });
-    } else {
-      // Create regular ring with local images
-      const imagePaths = Array(16)
-        .fill(0)
-        .map((_, index) => `/image-${index + 1}.jpg`);
-      return new ImageRing({
-        angleOffset: 20 * index,
-        imagePaths,
-        yPosition: VERTICAL_OFFSET * index,
-        depthOffset: DEPTH_OFFSET,
-        isOdd: index % 2 === 0,
-        onDoubleClick: handleNFTSelect,
-      });
-    }
-  }
-
   // Function to handle NFT selection
-  const handleNFTSelect = (imageIndex: number) => {
+  const handleNFTSelect = useCallback((imageIndex: number) => {
     setSelectedNFT(imageIndex);
     setIsModalOpen(true);
     momentumPausedRef.current = true;
-  };
+  }, []);
+
+  // Function to create a ring
+  const createRing = useCallback(
+    (index: number): ImageRing => {
+      if (isOnChainMode && nftMetadata.length > 0) {
+        // Create ring with NFT metadata
+        return new ImageRing({
+          angleOffset: 20 * index,
+          imagePaths: Array(nftMetadata.length).fill(""), // Placeholder, not used
+          yPosition: VERTICAL_OFFSET * index,
+          depthOffset: DEPTH_OFFSET,
+          isOdd: index % 2 === 0,
+          onDoubleClick: handleNFTSelect,
+          nftMetadata: nftMetadata,
+          darkMode: true,
+        });
+      } else {
+        // Create regular ring with local images
+        const imagePaths = Array(16)
+          .fill(0)
+          .map((_, index) => `/image-${index + 1}.jpg`);
+        return new ImageRing({
+          angleOffset: 20 * index,
+          imagePaths,
+          yPosition: VERTICAL_OFFSET * index,
+          depthOffset: DEPTH_OFFSET,
+          isOdd: index % 2 === 0,
+          onDoubleClick: handleNFTSelect,
+        });
+      }
+    },
+    [isOnChainMode, nftMetadata, VERTICAL_OFFSET, DEPTH_OFFSET, handleNFTSelect]
+  );
 
   // Function to handle modal close
   const handleModalClose = () => {
@@ -150,7 +153,7 @@ export default function Home() {
                 const endIndex = baseIndex + VISIBLE_RINGS / 2;
 
                 // Remove all existing rings
-                for (const [index, ring] of rings.entries()) {
+                for (const ring of rings.values()) {
                   scene.remove(ring.getGroup());
                   ring.dispose();
                 }
@@ -266,7 +269,7 @@ export default function Home() {
                 const endIndex = baseIndex + VISIBLE_RINGS / 2;
 
                 // Remove all existing rings
-                for (const [index, ring] of rings.entries()) {
+                for (const ring of rings.values()) {
                   scene.remove(ring.getGroup());
                   ring.dispose();
                 }
@@ -342,7 +345,7 @@ export default function Home() {
     const endIndex = VISIBLE_RINGS / 2;
 
     // Remove all existing rings
-    for (const [index, ring] of rings.entries()) {
+    for (const ring of rings.values()) {
       scene.remove(ring.getGroup());
       ring.dispose();
     }
@@ -359,7 +362,7 @@ export default function Home() {
     for (const [index, ring] of newRings) {
       rings.set(index, ring);
     }
-  }, [isOnChainMode]);
+  }, [isOnChainMode, VISIBLE_RINGS, createRing]);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -465,7 +468,7 @@ export default function Home() {
         }
 
         // Remove old rings from the scene
-        for (const [index, ring] of rings.entries()) {
+        for (const ring of rings.values()) {
           const scene = sceneRef.current as THREE.Scene;
           scene.remove(ring.getGroup());
           ring.dispose();
@@ -623,7 +626,14 @@ export default function Home() {
       }
       rings.clear();
     };
-  }, [isOnChainMode, nftMetadata]);
+  }, [
+    isOnChainMode,
+    nftMetadata,
+    VISIBLE_RINGS,
+    VERTICAL_OFFSET,
+    DEPTH_OFFSET,
+    createRing,
+  ]);
 
   return (
     <>

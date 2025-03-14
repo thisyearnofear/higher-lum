@@ -8,13 +8,14 @@ import { NFTType } from "@/types/nft-types";
 import { getBestImageUrl } from "@/services/nftService";
 import { getOriginalById } from "@/services/contract";
 import type { OriginalNFT } from "@/types/nft-types";
+import type { NFTMetadata } from "@/types/nft-types";
 
 interface NFTModalProps {
   imageIndex: number;
   isOpen: boolean;
   onClose: () => void;
   isOnChainMode?: boolean;
-  onChainNFTs?: any[];
+  onChainNFTs?: NFTMetadata[];
 }
 
 export function NFTModal({

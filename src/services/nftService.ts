@@ -191,7 +191,9 @@ export function extractGroveHash(url: string): string | null {
 }
 
 // Helper function to fetch and parse IPFS metadata
-async function fetchIPFSMetadata(uri: string): Promise<any> {
+async function fetchIPFSMetadata(
+  uri: string
+): Promise<Record<string, unknown>> {
   try {
     // Convert IPFS URI to HTTP URL if needed
     let url = uri;
@@ -236,19 +238,6 @@ async function fetchIPFSMetadata(uri: string): Promise<any> {
     return await response.json();
   } catch (error) {
     console.error("Error fetching IPFS metadata:", error);
-
-    // If the URL contains a Grove URL, extract and use it directly
-    if (uri.includes("api.grove.storage")) {
-      const groveHash = extractGroveHash(uri);
-      if (groveHash) {
-        return {
-          image: getFullGroveUrl(groveHash),
-          name: "Higher Original NFT",
-          description: "A Higher Original NFT from the collection",
-        };
-      }
-    }
-
     throw error;
   }
 }
@@ -341,18 +330,18 @@ export async function getOriginalById(id: number): Promise<OriginalNFT> {
 
     // Extract Grove URL from metadata
     let groveUrl = "";
-    if (metadata.image) {
-      const hash = extractGroveHash(metadata.image);
+    if (metadata.image && typeof metadata.image === "string") {
+      const hash = extractGroveHash(metadata.image as string);
       if (hash) groveUrl = hash;
     }
 
     return {
       tokenId: id,
-      creator: metadata.creator || "0x1234...5678", // Use metadata.creator if available
+      creator: (metadata.creator as string) || "0x1234...5678", // Use metadata.creator if available
       groveUrl,
       tokenURI: tokenURI as string,
-      overlayType: metadata.overlayType || "none",
-      editionCount: metadata.editionCount || 0,
+      overlayType: (metadata.overlayType as string) || "none",
+      editionCount: (metadata.editionCount as number) || 0,
     };
   } catch (error) {
     console.error(`Error fetching original NFT #${id}:`, error);
@@ -424,30 +413,36 @@ export async function fetchNFTsFromGrove(
         // Extract Grove URL if present
         let groveUrl = "";
         let imageUrl = "";
-        if (metadata.image) {
-          const hash = extractGroveHash(metadata.image);
+        if (metadata.image && typeof metadata.image === "string") {
+          const hash = extractGroveHash(metadata.image as string);
           if (hash) {
             groveUrl = hash;
             // Store the Grove URL but use local images for faster loading
             imageUrl = `/image-${(i % 16) + 1}.jpg`;
           } else {
             // If not a Grove URL, use the image directly
-            imageUrl = metadata.image;
+            imageUrl = metadata.image as string;
           }
         }
 
         // Use local images for faster loading but store Grove URL for later
         nfts.push({
           id: tokenIdBigInt.toString(),
-          name: metadata.name || `Higher Original #${tokenIdBigInt.toString()}`,
+          name:
+            (metadata.name as string) ||
+            `Higher Original #${tokenIdBigInt.toString()}`,
           description:
-            metadata.description || "A Higher Original NFT from the collection",
+            (metadata.description as string) ||
+            "A Higher Original NFT from the collection",
           image: imageUrl, // Use local image for faster loading
           tokenId: Number(tokenIdBigInt),
           type: NFTType.ORIGINAL,
           originalId: Number(tokenIdBigInt),
           groveUrl, // Store the Grove hash for later use
-          attributes: metadata.attributes || [
+          attributes: (metadata.attributes as Array<{
+            trait_type: string;
+            value: string | number;
+          }>) || [
             {
               trait_type: "Type",
               value: "Higher Original",
