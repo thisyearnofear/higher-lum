@@ -86,14 +86,15 @@ export class ImageRing extends Freezable {
         z: Math.sin(radians) * radius,
       });
 
-      // Set arrow color if in dark mode
+      // Set arrow color if in dark mode - keep them green
       if (this.darkMode) {
         const arrowMesh = arrow.getMesh();
         if (
           arrowMesh &&
           arrowMesh.material instanceof THREE.MeshBasicMaterial
         ) {
-          arrowMesh.material.color.set(0x333333);
+          // Keep the default green color
+          // arrowMesh.material.color.set(0x333333); - removed
         }
 
         const secondaryMesh = arrow.getSecondaryMesh();
@@ -101,7 +102,8 @@ export class ImageRing extends Freezable {
           secondaryMesh &&
           secondaryMesh.material instanceof THREE.MeshBasicMaterial
         ) {
-          secondaryMesh.material.color.set(0x333333);
+          // Keep the default green color
+          // secondaryMesh.material.color.set(0x333333); - removed
         }
       }
 
@@ -124,6 +126,12 @@ export class ImageRing extends Freezable {
         this.group.add(secondaryMesh);
       }
     });
+
+    // Store metadata about this ring in the group's userData
+    this.group.userData = {
+      isNftRing: this.isNftMode,
+      darkMode: this.darkMode,
+    };
 
     this.group.position.set(0, yPosition, 0);
     this.group.rotation.y = angleOffset;
@@ -202,6 +210,20 @@ export class ImageRing extends Freezable {
 
     // Also trigger normal click behavior
     this.images.forEach((image) => image.onClick());
+  }
+
+  // Reset the speed of all arrows in this ring
+  public resetArrowSpeeds(): void {
+    this.arrows.forEach((arrow) => {
+      if (typeof arrow.resetSpeed === "function") {
+        arrow.resetSpeed();
+      }
+    });
+  }
+
+  // Reset the rotation speed of the ring
+  public resetRotationSpeed(): void {
+    this.lastOffset = 0;
   }
 
   public dispose(): void {

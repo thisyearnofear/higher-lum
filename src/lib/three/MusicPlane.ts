@@ -6,11 +6,74 @@ interface MusicPlaneConfig {
   z?: number;
 }
 
+// Static music player that persists across component lifecycles
+let globalPlayerElement: HTMLDivElement | null = null;
+let globalCurrentTrack = 1;
+const MAX_TRACKS = 6;
+
+// Function to create the global player if it doesn't exist
+function ensureGlobalPlayer() {
+  if (!globalPlayerElement) {
+    globalPlayerElement = document.createElement("div");
+    globalPlayerElement.id = "global-music-player";
+    globalPlayerElement.style.position = "fixed";
+    globalPlayerElement.style.left = "-9999px";
+    globalPlayerElement.style.top = "-9999px";
+    globalPlayerElement.style.width = "350px";
+    globalPlayerElement.style.height = "40px";
+    globalPlayerElement.style.backgroundColor = "rgba(255, 255, 255, 0.1)";
+    globalPlayerElement.style.backdropFilter = "blur(10px)";
+    globalPlayerElement.style.borderRadius = "8px";
+    globalPlayerElement.style.overflow = "hidden";
+    globalPlayerElement.style.border = "1px solid rgba(255, 255, 255, 0.2)";
+    globalPlayerElement.style.zIndex = "1000";
+    globalPlayerElement.style.boxShadow = "0 4px 6px rgba(0, 0, 0, 0.1)";
+    globalPlayerElement.style.transition = "opacity 0.3s ease";
+    document.body.appendChild(globalPlayerElement);
+
+    // Load the initial track
+    loadGlobalTrack();
+
+    // Listen for messages from the iframe
+    window.addEventListener("message", (event) => {
+      if (event.data && event.data.type === "trackEnd") {
+        playNextGlobalTrack();
+      }
+    });
+  }
+  return globalPlayerElement;
+}
+
+// Function to load a track in the global player
+function loadGlobalTrack() {
+  if (!globalPlayerElement) return;
+
+  const baseTrackUrl = "https://futuretape.xyz/search/songcamp";
+  const trackUrl = `${baseTrackUrl}?start=${globalCurrentTrack}&autoplay=1`;
+
+  globalPlayerElement.innerHTML = `
+    <iframe
+      id="global-music-player-iframe"
+      src="${trackUrl}"
+      width="100%"
+      height="300"
+      frameBorder="0"
+      allow="autoplay; clipboard-write;"
+      loading="lazy"
+      style="position: relative; top: -260px;"
+    ></iframe>
+  `;
+}
+
+// Function to play the next track
+function playNextGlobalTrack() {
+  globalCurrentTrack = (globalCurrentTrack % MAX_TRACKS) + 1;
+  loadGlobalTrack();
+}
+
 export class MusicPlane {
   private mesh: THREE.Mesh;
   private playerElement: HTMLDivElement;
-  private currentTrack: number = 1;
-  private readonly MAX_TRACKS = 6;
 
   constructor({ x = 0, y = 0, z = 0 }: MusicPlaneConfig) {
     // Create a plane geometry for the player
@@ -47,54 +110,35 @@ export class MusicPlane {
     this.mesh = new THREE.Mesh(geometry, material);
     this.mesh.position.set(x, y, z);
 
-    // Create the player element
-    this.playerElement = document.createElement("div");
-    this.playerElement.style.position = "fixed";
-    this.playerElement.style.left = "-9999px";
-    this.playerElement.style.top = "-9999px";
-    this.playerElement.style.width = "350px";
-    this.playerElement.style.height = "40px";
-    this.playerElement.style.backgroundColor = "rgba(255, 255, 255, 0.1)";
-    this.playerElement.style.backdropFilter = "blur(10px)";
-    this.playerElement.style.borderRadius = "8px";
-    this.playerElement.style.overflow = "hidden";
-    this.playerElement.style.border = "1px solid rgba(255, 255, 255, 0.2)";
-    this.playerElement.style.zIndex = "1000";
-    this.playerElement.style.boxShadow = "0 4px 6px rgba(0, 0, 0, 0.1)";
-    this.playerElement.style.transition = "opacity 0.3s ease";
-    document.body.appendChild(this.playerElement);
-
-    // Start playing
-    this.loadTrack();
-
-    // Listen for messages from the iframe
-    window.addEventListener("message", (event) => {
-      if (event.data && event.data.type === "trackEnd") {
-        this.playNextTrack();
-      }
-    });
+    // Use the global player element
+    this.playerElement = ensureGlobalPlayer();
   }
 
-  private loadTrack() {
-    const baseTrackUrl = "https://futuretape.xyz/search/songcamp";
-    const trackUrl = `${baseTrackUrl}?start=${this.currentTrack}&autoplay=1`;
-
-    this.playerElement.innerHTML = `
-      <iframe
-        src="${trackUrl}"
-        width="100%"
-        height="300"
-        frameBorder="0"
-        allow="autoplay; clipboard-write;"
-        loading="lazy"
-        style="position: relative; top: -260px;"
-      ></iframe>
-    `;
+  // Get current track information
+  getCurrentTrack(): number {
+    return globalCurrentTrack;
   }
 
-  private playNextTrack() {
-    this.currentTrack = (this.currentTrack % this.MAX_TRACKS) + 1;
-    this.loadTrack();
+  // Set to a specific track
+  setTrack(trackNumber: number) {
+    if (trackNumber >= 1 && trackNumber <= MAX_TRACKS) {
+      globalCurrentTrack = trackNumber;
+      loadGlobalTrack();
+    }
+  }
+
+  // These methods don't need to do anything since the player persists
+  pause() {
+    // No need to pause, the player persists
+  }
+
+  resume() {
+    // No need to resume, the player persists
+  }
+
+  reloadTrack() {
+    // Only reload if needed
+    loadGlobalTrack();
   }
 
   update(camera: THREE.Camera) {
@@ -139,14 +183,14 @@ export class MusicPlane {
   }
 
   dispose() {
-    if (this.playerElement && this.playerElement.parentNode) {
-      this.playerElement.remove();
-    }
     if (this.mesh.material) {
       (this.mesh.material as THREE.Material).dispose();
     }
     if (this.mesh.geometry) {
       this.mesh.geometry.dispose();
     }
+
+    // We don't remove the global player element
+    // It will persist across component lifecycles
   }
 }

@@ -100,8 +100,8 @@ export class ImagePlane extends Freezable {
         (texture) => {
           // Configure texture based on source
           if (isGroveUrl) {
-            // For Grove URLs, we need to set flipY to false
-            texture.flipY = false;
+            // For Grove URLs, we need to set flipY to true (opposite of what we had before)
+            texture.flipY = true;
           } else {
             // For local images, keep flipY true
             texture.flipY = true;

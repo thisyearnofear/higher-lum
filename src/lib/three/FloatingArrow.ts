@@ -18,8 +18,8 @@ export class FloatingArrow {
   private readonly OVERLAP_DISTANCE = 5;
   private currentSpeed: number = 0;
   private readonly SPEED_DECAY = 0.98;
-  private readonly SPEED_SCALE = 0.1;
-  private readonly BASE_SPEED = 0.01;
+  private readonly SPEED_SCALE = 0.01;
+  private readonly BASE_SPEED = 0.005;
   private resetInProgress: boolean = false;
   private secondaryArrow: FloatingArrow | null = null;
 
@@ -90,8 +90,11 @@ export class FloatingArrow {
   }
 
   update(scrollSpeed: number = 0) {
+    // Limit the impact of extreme scroll speeds
+    const clampedScrollSpeed = Math.max(-0.1, Math.min(0.1, scrollSpeed));
+
     // Add base upward motion to scroll speed
-    const effectiveSpeed = scrollSpeed + this.BASE_SPEED;
+    const effectiveSpeed = clampedScrollSpeed + this.BASE_SPEED;
 
     // Update current speed with momentum
     this.currentSpeed =
@@ -146,6 +149,14 @@ export class FloatingArrow {
     }
     if (!this.rotateAnimation.isAnimating) {
       this.rotateAnimation.start();
+    }
+  }
+
+  // Reset the arrow's speed to a stable state
+  resetSpeed() {
+    this.currentSpeed = this.BASE_SPEED;
+    if (this.secondaryArrow) {
+      this.secondaryArrow.resetSpeed();
     }
   }
 
