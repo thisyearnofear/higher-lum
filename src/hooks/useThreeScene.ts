@@ -185,17 +185,27 @@ export const useThreeScene = (canvas: HTMLCanvasElement) => {
       ringsRef.current.forEach((ring) => ring.onMouseMove(mesh));
     };
 
-    const handleClick = (event: MouseEvent) => {
+    const handleClick = (event: MouseEvent | TouchEvent) => {
       event.preventDefault();
-      const mesh = getIntersectingObject(event);
+      const mouseEvent = event instanceof MouseEvent ? event : event.touches[0];
+      if (!mouseEvent) return;
+
+      const mesh = getIntersectingObject(mouseEvent);
       if (mesh) {
         ringsRef.current.forEach((ring) => ring.onClick(mesh));
       }
     };
 
+    const handleTouch = (event: TouchEvent) => {
+      event.preventDefault();
+      handleClick(event);
+    };
+
     window.addEventListener("resize", handleResize);
     canvas.addEventListener("mousemove", handleMouseMove);
     canvas.addEventListener("click", handleClick);
+    canvas.addEventListener("touchstart", handleTouch);
+    canvas.addEventListener("touchend", handleTouch);
 
     // Helper function to update rings
     function updateRings(cameraY: number) {
@@ -246,6 +256,8 @@ export const useThreeScene = (canvas: HTMLCanvasElement) => {
       window.removeEventListener("resize", handleResize);
       canvas.removeEventListener("mousemove", handleMouseMove);
       canvas.removeEventListener("click", handleClick);
+      canvas.removeEventListener("touchstart", handleTouch);
+      canvas.removeEventListener("touchend", handleTouch);
 
       if (musicPlayerRef.current) {
         musicPlayerRef.current.dispose();
@@ -256,24 +268,20 @@ export const useThreeScene = (canvas: HTMLCanvasElement) => {
   }, [canvas, DEPTH_OFFSET]);
 
   // Helper function to get intersecting object
-  function getIntersectingObject(event: MouseEvent) {
-    if (!cameraRef.current || !sceneRef.current) return null;
+  function getIntersectingObject(event: MouseEvent | Touch) {
+    const rect = canvas.getBoundingClientRect();
+    const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
-    const vector = new THREE.Vector2(
-      (event.clientX / window.innerWidth) * 2 - 1,
-      -(event.clientY / window.innerHeight) * 2 + 1
-    );
-
+    const vector = new THREE.Vector2(x, y);
     const raycaster = new THREE.Raycaster();
-    raycaster.setFromCamera(vector, cameraRef.current);
+    raycaster.setFromCamera(vector, cameraRef.current!);
 
     const intersects = raycaster.intersectObjects(
-      sceneRef.current.children,
+      sceneRef.current!.children,
       true
     );
-    if (intersects.length > 0) {
-      return intersects[0].object;
-    }
-    return null;
+
+    return intersects.length > 0 ? intersects[0].object : null;
   }
 };

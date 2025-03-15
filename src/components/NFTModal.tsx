@@ -7,6 +7,8 @@ import {
   COLLECTION_ADDRESS,
   NFT_METADATA,
   SCROLLIFY_ORIGINALS_ADDRESS,
+  SCROLLIFY_EDITIONS_ADDRESS,
+  EDITIONS_ADDRESS,
 } from "@/config/nft-config";
 import { NFTType } from "@/types/nft-types";
 import { getBestImageUrl } from "@/services/nftService";
@@ -15,6 +17,9 @@ import type { OriginalNFT } from "@/types/nft-types";
 import type { NFTMetadata } from "@/types/nft-types";
 import { EditionMinter } from "./EditionMinter";
 import { useAccount } from "wagmi";
+import { ethers } from "ethers";
+import { ScrollifyEditionsABI } from "@/services/contract";
+import { HigherBaseEditionsABI } from "@/services/contract";
 
 interface NFTModalProps {
   imageIndex: number;
@@ -43,6 +48,7 @@ export function NFTModal({
   const [isLoading, setIsLoading] = useState(false);
   const [selectedNFT, setSelectedNFT] = useState<NFTMetadata | null>(null);
   const [mintError, setMintError] = useState<string | null>(null);
+  const [editionCount, setEditionCount] = useState<number>(0);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { isConnected, chain } = useAccount();
 
@@ -162,6 +168,56 @@ export function NFTModal({
     scrollNFTs,
     selectedNFTId,
   ]);
+
+  // Function to get current edition count
+  const getCurrentEditionCount = useCallback(async () => {
+    if (!selectedNFT) return;
+
+    try {
+      const provider = new ethers.JsonRpcProvider(
+        isOnChainScrollMode
+          ? "https://sepolia-rpc.scroll.io/"
+          : "https://sepolia.base.org"
+      );
+
+      const contract = new ethers.Contract(
+        isOnChainScrollMode ? SCROLLIFY_EDITIONS_ADDRESS : EDITIONS_ADDRESS,
+        isOnChainScrollMode ? ScrollifyEditionsABI : HigherBaseEditionsABI,
+        provider
+      );
+
+      const count = await contract.editionsMinted(selectedNFT.id);
+      setEditionCount(Number(count));
+    } catch (error) {
+      console.error("Error fetching edition count:", error);
+    }
+  }, [selectedNFT, isOnChainScrollMode]);
+
+  // Poll for edition count updates
+  useEffect(() => {
+    let pollInterval: NodeJS.Timeout;
+
+    if (isOpen && selectedNFT) {
+      // Initial fetch
+      getCurrentEditionCount();
+
+      // Poll every 3 seconds while modal is open
+      pollInterval = setInterval(getCurrentEditionCount, 3000);
+    }
+
+    return () => {
+      if (pollInterval) {
+        clearInterval(pollInterval);
+      }
+    };
+  }, [isOpen, selectedNFT, getCurrentEditionCount]);
+
+  // Update edition count when NFT selection changes
+  useEffect(() => {
+    if (selectedNFT) {
+      getCurrentEditionCount();
+    }
+  }, [selectedNFT, getCurrentEditionCount]);
 
   if (!mounted || (!isOpen && !isClosing)) return null;
 
@@ -336,6 +392,19 @@ export function NFTModal({
                   Mint on Zora
                 </button>
               )}
+
+              <div className="text-center mb-4">
+                <p className="text-lg font-semibold mb-2">
+                  Editions minted: {editionCount} / 100
+                </p>
+                {editionCount >= 100 ? (
+                  <p className="text-red-500">All editions have been minted</p>
+                ) : (
+                  <p className="text-green-500">
+                    {100 - editionCount} editions available for minting
+                  </p>
+                )}
+              </div>
             </>
           )}
         </div>

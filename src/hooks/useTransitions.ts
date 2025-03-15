@@ -376,13 +376,13 @@ export function useTransitions({
     console.log("Transitioning back to off-chain mode");
 
     // Start incremental progress update
-    updateProgressIncremental(1, 50, 500);
+    updateProgressIncremental(1, 50, 300);
 
     // Change background color with transition
     if (sceneRef.current) {
-      const startColor = new THREE.Color(0x000000); // Black for Base
+      const startColor = sceneRef.current.background as THREE.Color;
       const endColor = new THREE.Color(0xffffff); // White for off-chain
-      const duration = 1000;
+      const duration = 800; // Reduced from 1000ms
       const startTime = Date.now();
 
       const animateBackgroundColor = () => {
@@ -400,49 +400,40 @@ export function useTransitions({
         }
 
         // Update loading progress based on color transition
-        const progressValue = Math.floor(50 + progress * 40);
+        const progressValue = Math.floor(50 + progress * 30);
         setTransitionLoadingProgress(progressValue);
 
         if (progress < 1) {
           requestAnimationFrame(animateBackgroundColor);
         } else {
-          // Reset all mode flags
+          // Update mode flags and state simultaneously
           isOnChainModeRef.current = false;
           isOnChainScrollModeRef.current = false;
+          setIsOnChainMode(false);
+          setIsOnChainScrollMode(false);
 
-          // Update progress to 95%
-          setTransitionLoadingProgress(95);
+          // Replace rings immediately after mode change
+          replaceAllRings();
 
-          // Set state values after a small delay to ensure refs are updated first
+          // Update progress to completion
+          setTransitionLoadingProgress(100);
+
+          // Complete the transition
           setTimeout(() => {
-            setIsOnChainMode(false);
-            setIsOnChainScrollMode(false);
-
-            // Force replace all visible rings
-            replaceAllRings();
-
-            // Final progress update
-            setTransitionLoadingProgress(100);
-
-            // Complete the transition after a small delay
-            setTimeout(() => {
-              transitionInProgressRef.current = false;
-              setIsHigherLoading(false);
-            }, 200);
-          }, 50);
+            transitionInProgressRef.current = false;
+            setIsHigherLoading(false);
+          }, 100);
         }
       };
 
       animateBackgroundColor();
     }
   }, [
-    replaceAllRings,
+    updateProgressIncremental,
     sceneRef,
-    isOnChainModeRef,
-    isOnChainScrollModeRef,
     setIsOnChainMode,
     setIsOnChainScrollMode,
-    updateProgressIncremental,
+    replaceAllRings,
   ]);
 
   // Function to transition to on-chain experience (Base NFTs)

@@ -75,31 +75,87 @@ export function EditionMinter({
         provider
       );
 
-      const count = await contract.editionsMinted(originalId);
-      setCurrentEditionCount(Number(count));
-      console.log(`Edition count for original #${originalId}: ${count}`);
+      // Get both editionsMinted and check if the original exists
+      const [count, originalExists] = await Promise.all([
+        contract.editionsMinted(originalId),
+        chainId === 534351
+          ? contract.originalExists(originalId)
+          : Promise.resolve(true),
+      ]);
+
+      if (!originalExists && chainId === 534351) {
+        console.log(`Original #${originalId} doesn't exist on Scroll`);
+        setCurrentEditionCount(0);
+        return;
+      }
+
+      const editionCount = Number(count);
+      setCurrentEditionCount(editionCount);
+      console.log(`Edition count for original #${originalId}: ${editionCount}`);
+
+      // Update available editions for Scroll
+      if (chainId === 534351) {
+        const available = await getAvailableScrollEditions();
+        setAvailableEditions(available);
+      }
     } catch (error) {
       console.error("Error refreshing edition count:", error);
+      // On error, try again after a short delay
+      setTimeout(refreshEditionCount, 2000);
     }
   }, [chainId, originalId]);
 
-  // Poll for edition count updates
+  // Poll for edition count updates more frequently right after minting
   useEffect(() => {
-    // Initial fetch
-    refreshEditionCount();
+    let pollInterval: NodeJS.Timeout;
+    let fastPollTimeout: NodeJS.Timeout;
 
-    // Set up polling every 10 seconds
-    const pollInterval = setInterval(refreshEditionCount, 10000);
+    const startPolling = () => {
+      // Initial fetch
+      refreshEditionCount();
 
-    // Clean up
-    return () => clearInterval(pollInterval);
-  }, [chainId, refreshEditionCount]);
+      // Fast polling for 30 seconds after mounting or minting
+      const fastPoll = () => {
+        pollInterval = setInterval(refreshEditionCount, 3000);
+        // Switch to slower polling after 30 seconds
+        fastPollTimeout = setTimeout(() => {
+          clearInterval(pollInterval);
+          pollInterval = setInterval(refreshEditionCount, 10000);
+        }, 30000);
+      };
 
-  // Update edition count on mount and when props change
+      fastPoll();
+    };
+
+    startPolling();
+
+    // Cleanup
+    return () => {
+      clearInterval(pollInterval);
+      clearTimeout(fastPollTimeout);
+    };
+  }, [refreshEditionCount, txHash]); // Added txHash dependency to restart fast polling after minting
+
+  // Update edition count when props change
   useEffect(() => {
-    setCurrentEditionCount(editionCount);
     refreshEditionCount();
   }, [editionCount, refreshEditionCount]);
+
+  // Update available editions for Scroll
+  useEffect(() => {
+    if (chainId === 534351) {
+      const checkAvailableEditions = async () => {
+        try {
+          const available = await getAvailableScrollEditions();
+          setAvailableEditions(available);
+        } catch (err) {
+          console.error("Error checking available editions:", err);
+        }
+      };
+
+      checkAvailableEditions();
+    }
+  }, [chainId, currentEditionCount]);
 
   // Check if user is on the correct network
   useEffect(() => {
@@ -115,33 +171,6 @@ export function EditionMinter({
       networkSwitchAttemptedRef.current = false;
     }
   }, [isConnected, chain?.id, chainId]);
-
-  // Check for available editions on Scroll
-  useEffect(() => {
-    if (chainId === 534351) {
-      const checkAvailableEditions = async () => {
-        try {
-          // With the new contract, all original IDs are valid for minting
-          // We just need to check if they've reached the max editions (100)
-          const editions = await getAvailableScrollEditions();
-          setAvailableEditions(editions);
-
-          // Check if the current originalId has reached max editions
-          if (!editions.includes(originalId)) {
-            setError(
-              `Maximum editions (100) already minted for original ID ${originalId}.`
-            );
-          } else {
-            setError(null);
-          }
-        } catch (err) {
-          console.error("Error checking available editions:", err);
-        }
-      };
-
-      checkAvailableEditions();
-    }
-  }, [chainId, originalId]);
 
   // Function to parse user-friendly error messages
   const getReadableErrorMessage = (error: unknown): string => {
