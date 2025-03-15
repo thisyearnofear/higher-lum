@@ -9,7 +9,8 @@ export enum NFTType {
 
 export interface NFTMetadata {
   id: string;
-  name: string;
+  name?: string;
+  title?: string;
   description: string;
   image: string;
   tokenId: number;
@@ -21,6 +22,11 @@ export interface NFTMetadata {
     trait_type: string;
     value: string | number;
   }>;
+  chainId?: number;
+  contractAddress?: string;
+  isScrollNFT?: boolean;
+  tokenURI?: string;
+  chainName?: string;
 }
 
 export interface OriginalNFT {

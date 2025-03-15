@@ -8,117 +8,100 @@ import "@openzeppelin/contracts/interfaces/IERC2981.sol";
 
 /**
  * @title ScrollifyEditions
- * @dev ERC1155 contract for minting limited edition NFTs with pricing and royalties
+ * @dev ERC1155 contract for minting editions of original NFTs with pricing and royalties
  */
 contract ScrollifyEditions is ERC1155, Ownable, IERC2981 {
     using Counters for Counters.Counter;
-    Counters.Counter private _editionIds;
 
-    uint256 public constant MINT_PRICE_PER_EDITION = 0.005 ether;
-    uint96 public constant ROYALTY_PERCENTAGE = 5000; // 50% to minter, 50% to contract owner
+    // Constants
+    uint256 public constant MINT_PRICE = 0.005 ether;
+    uint96 public constant ROYALTY_PERCENTAGE = 5000; // 50% to original creator, 50% to contract owner
     uint256 public constant MAX_EDITIONS_PER_ORIGINAL = 100; // Maximum of 100 editions per original
 
-    struct Edition {
-        uint256 maxSupply;
-        uint256 currentSupply;
-        address creator;
-    }
+    // Address of the ScrollifyOriginals contract
+    address public originalsContract;
 
-    mapping(uint256 => Edition) public editions;
-    mapping(uint256 => string) private _tokenURIs;
+    // Mapping from original NFT ID to number of editions minted
+    mapping(uint256 => uint256) public editionsMinted;
     
-    // Enumeration mappings
-    mapping(uint256 => uint256) private _allTokens;
-    uint256 private _allTokensIndex;
+    // Mapping from original NFT ID to creator address
+    mapping(uint256 => address) public originalCreators;
+    
+    // Mapping from edition ID to original NFT ID
+    mapping(uint256 => uint256) public originalTokenId;
+    
+    // Mapping from token ID to token URI
+    mapping(uint256 => string) private _tokenURIs;
 
-    // Interface ID constant
-    bytes4 private constant _INTERFACE_ID_ERC1155_ENUMERABLE = 0x780e9d63;
+    // Events
+    event EditionMinted(uint256 indexed editionId, uint256 indexed originalId, address indexed recipient, address originalCreator);
 
-    event EditionCreated(uint256 indexed editionId, address indexed creator, uint256 maxSupply, string tokenURI);
-    event EditionMinted(uint256 indexed editionId, address indexed recipient, uint256 amount);
-
-    constructor() ERC1155("") Ownable(msg.sender) {}
-
-    /**
-     * @dev Returns the total number of editions
-     */
-    function totalSupply() public view returns (uint256) {
-        return _editionIds.current();
+    constructor(address _originalsContract) ERC1155("") Ownable(msg.sender) {
+        originalsContract = _originalsContract;
     }
 
     /**
-     * @dev Returns the token ID at the given index
+     * @dev Returns the price to mint an edition
      */
-    function tokenByIndex(uint256 index) public view returns (uint256) {
-        require(index < totalSupply(), "Index out of bounds");
-        return _allTokens[index];
+    function editionPrice() external pure returns (uint256) {
+        return MINT_PRICE;
     }
 
     /**
-     * @dev Creates a new limited edition NFT
-     * @param maxEditionSupply Max number of copies
-     * @param tokenURI Metadata URI
+     * @dev Mints an edition of an original NFT
+     * @param originalId The ID of the original NFT to create an edition of
      */
-    function createEdition(uint256 maxEditionSupply, string calldata tokenURI) external onlyOwner returns (uint256) {
-        require(maxEditionSupply > 0, "Edition supply must be greater than zero");
-        require(maxEditionSupply <= MAX_EDITIONS_PER_ORIGINAL, "Exceeds maximum editions per original");
-
-        _editionIds.increment();
-        uint256 newEditionId = _editionIds.current();
-
-        editions[newEditionId] = Edition(maxEditionSupply, 0, msg.sender);
-        _setURI(newEditionId, tokenURI);
+    function mintEdition(uint256 originalId) external payable {
+        require(msg.value == MINT_PRICE, "Incorrect ETH amount");
+        require(editionsMinted[originalId] < MAX_EDITIONS_PER_ORIGINAL, "Max editions reached for this original");
         
-        // Add to enumeration
-        _allTokens[_allTokensIndex] = newEditionId;
-        _allTokensIndex++;
-
-        emit EditionCreated(newEditionId, msg.sender, maxEditionSupply, tokenURI);
-        return newEditionId;
-    }
-
-    /**
-     * @dev Set token URI
-     */
-    function _setURI(uint256 tokenId, string memory tokenURI) internal virtual {
-        _tokenURIs[tokenId] = tokenURI;
-    }
-
-    /**
-     * @dev Mints editions of an NFT
-     * @param to Recipient address
-     * @param editionId Edition ID
-     * @param amount Number of copies to mint
-     */
-    function mintEdition(address to, uint256 editionId, uint256 amount) external payable {
-        require(amount > 0, "Mint amount must be greater than zero");
-        require(msg.value == MINT_PRICE_PER_EDITION * amount, "Incorrect ETH amount");
-        require(editions[editionId].currentSupply + amount <= editions[editionId].maxSupply, "Exceeds max supply");
-
-        editions[editionId].currentSupply += amount;
-        _mint(to, editionId, amount, "");
-
-        emit EditionMinted(editionId, to, amount);
-    }
-
-    /**
-     * @dev Withdraw contract balance to owner
-     */
-    function withdrawFunds() external onlyOwner {
-        payable(owner()).transfer(address(this).balance);
-    }
-
-    /**
-     * @dev Implements EIP-2981 royalty info (50% to creator, 50% to contract owner)
-     */
-    function royaltyInfo(uint256 editionId, uint256 salePrice) external view override returns (address receiver, uint256 royaltyAmount) {
-        Edition storage edition = editions[editionId];
-        uint256 royalty = (salePrice * ROYALTY_PERCENTAGE) / 10000;
+        // Get the next edition number for this original
+        uint256 editionNumber = editionsMinted[originalId] + 1;
         
-        // For simplicity, we'll return the creator as the receiver
-        // In a production environment, you might want to implement a more sophisticated
-        // royalty distribution system
-        return (edition.creator, royalty);
+        // Create a unique edition ID by combining original ID and edition number
+        // Format: originalId * 1000 + editionNumber
+        uint256 editionId = (originalId * 1000) + editionNumber;
+        
+        // Try to get the original creator from the originals contract
+        address originalCreator;
+        try IScrollifyOriginals(originalsContract).creators(originalId) returns (address creator) {
+            originalCreator = creator;
+            originalCreators[originalId] = creator;
+        } catch {
+            // If we can't get the creator, use the sender
+            originalCreator = msg.sender;
+            originalCreators[originalId] = msg.sender;
+        }
+        
+        // Try to get the token URI from the originals contract
+        string memory tokenUriFromOriginal;
+        try IScrollifyOriginals(originalsContract).tokenURI(originalId) returns (string memory tokenUri) {
+            tokenUriFromOriginal = tokenUri;
+            _tokenURIs[editionId] = tokenUri;
+        } catch {
+            // If we can't get the URI, use a default one based on the original contract
+            tokenUriFromOriginal = string(abi.encodePacked("ipfs://scroll-editions/", toString(originalId), "/", toString(editionNumber)));
+            _tokenURIs[editionId] = tokenUriFromOriginal;
+        }
+        
+        // Mint the edition
+        _mint(msg.sender, editionId, 1, "");
+        
+        // Update the mappings
+        originalTokenId[editionId] = originalId;
+        editionsMinted[originalId]++;
+        
+        // Emit the event
+        emit EditionMinted(editionId, originalId, msg.sender, originalCreator);
+        
+        // Split the payment between the original creator and the contract owner
+        uint256 creatorShare = msg.value / 2;
+        
+        // Send the creator's share
+        (bool sentToCreator, ) = payable(originalCreator).call{value: creatorShare}("");
+        require(sentToCreator, "Failed to send creator share");
+        
+        // Owner's share is kept in the contract for later withdrawal
     }
 
     /**
@@ -136,12 +119,63 @@ contract ScrollifyEditions is ERC1155, Ownable, IERC2981 {
     }
 
     /**
+     * @dev Withdraw contract balance to owner
+     */
+    function withdrawFunds() external onlyOwner {
+        payable(owner()).transfer(address(this).balance);
+    }
+
+    /**
+     * @dev Implements EIP-2981 royalty info (50% to original creator, 50% to contract owner)
+     */
+    function royaltyInfo(uint256 editionId, uint256 salePrice) external view override returns (address receiver, uint256 royaltyAmount) {
+        uint256 originalId = originalTokenId[editionId];
+        address creator = originalCreators[originalId];
+        uint256 royalty = (salePrice * ROYALTY_PERCENTAGE) / 10000;
+        
+        return (creator, royalty);
+    }
+
+    /**
      * @dev See {IERC165-supportsInterface}.
      */
     function supportsInterface(bytes4 interfaceId) public view virtual override(ERC1155, IERC165) returns (bool) {
         return 
             interfaceId == type(IERC2981).interfaceId || 
-            interfaceId == _INTERFACE_ID_ERC1155_ENUMERABLE || 
             super.supportsInterface(interfaceId);
     }
+    
+    /**
+     * @dev Helper function to convert uint to string
+     */
+    function toString(uint256 value) internal pure returns (string memory) {
+        if (value == 0) {
+            return "0";
+        }
+        
+        uint256 temp = value;
+        uint256 digits;
+        
+        while (temp != 0) {
+            digits++;
+            temp /= 10;
+        }
+        
+        bytes memory buffer = new bytes(digits);
+        while (value != 0) {
+            digits -= 1;
+            buffer[digits] = bytes1(uint8(48 + uint256(value % 10)));
+            value /= 10;
+        }
+        
+        return string(buffer);
+    }
+}
+
+/**
+ * @dev Interface for the ScrollifyOriginals contract
+ */
+interface IScrollifyOriginals {
+    function tokenURI(uint256 tokenId) external view returns (string memory);
+    function creators(uint256 tokenId) external view returns (address);
 }

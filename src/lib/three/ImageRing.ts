@@ -23,11 +23,13 @@ export class ImageRing extends Freezable {
   private lastOffset: number = 0;
   private isOdd: boolean = false;
   private lastClickTime: number = 0;
-  private readonly DOUBLE_CLICK_DELAY = 300; // ms
+  private lastClickedMesh: THREE.Object3D | null = null;
+  private readonly DOUBLE_CLICK_DELAY = 500; // Increased from 300ms to 500ms for better detection
   private readonly onDoubleClick?: (imageIndex: number, nftId?: string) => void;
   private isNftMode: boolean = false;
   private nftMetadata?: NFTMetadata[];
   private darkMode: boolean = false;
+  private lastClickedIndex: number = -1;
 
   constructor({
     angleOffset,
@@ -40,7 +42,6 @@ export class ImageRing extends Freezable {
     darkMode = false,
   }: ImageRingConfig) {
     super();
-    const anglePiece = 360 / imagePaths.length;
     this.isNftMode = !!nftMetadata && nftMetadata.length > 0;
     this.nftMetadata = nftMetadata;
     this.darkMode = darkMode;
@@ -51,22 +52,123 @@ export class ImageRing extends Freezable {
       }, nftMetadata length=${nftMetadata?.length || 0}`
     );
 
+    if (this.isNftMode && nftMetadata) {
+      console.log(
+        "NFT Metadata in ring:",
+        nftMetadata.map((nft) => ({
+          id: nft.id,
+          name: nft.name,
+          tokenId: nft.tokenId,
+          type: nft.type,
+          isScroll:
+            nft.name?.toLowerCase().includes("scroll") ||
+            nft.description?.toLowerCase().includes("scroll") ||
+            nft.chainId === 534351,
+        }))
+      );
+    }
+
+    // Calculate angle piece based on the number of images
+    // For NFT mode, we want to ensure consistent spacing regardless of NFT count
+    const MAX_IMAGES_PER_RING = 16; // Standard number of images in off-chain mode
+    const totalImages =
+      this.isNftMode && nftMetadata
+        ? Math.min(nftMetadata.length, MAX_IMAGES_PER_RING)
+        : imagePaths.length;
+
+    const anglePiece = 360 / totalImages;
+
     // Create images
     if (this.isNftMode && nftMetadata) {
-      // Use NFT metadata for images
+      // Use NFT metadata for images, but limit to MAX_IMAGES_PER_RING
       console.log("Creating NFT image planes");
-      this.images = nftMetadata.map(
-        (nft, index) =>
-          new ImagePlane({
-            imagePath: getBestImageUrl(nft),
-            width: 800,
-            height: 800,
-            angle: anglePiece * index,
-            worldPoint: new THREE.Vector3(0, 0, depthOffset),
-            isNft: true,
-            nftId: nft.id,
-          })
+
+      // Log all available NFTs before selection
+      console.log(
+        "All available NFTs before selection:",
+        nftMetadata.map((nft) => ({
+          id: nft.id,
+          name: nft.name,
+          chainId: nft.chainId,
+          chainName: nft.chainName,
+          isScrollNFT: nft.isScrollNFT,
+        }))
       );
+
+      // Instead of taking first N NFTs, distribute them evenly around the ring
+      const totalNfts = nftMetadata.length;
+      const nftsToDisplay = Array(Math.min(totalNfts, MAX_IMAGES_PER_RING))
+        .fill(null)
+        .map((_, i) => {
+          const originalIndex = Math.floor(
+            (i * totalNfts) / Math.min(totalNfts, MAX_IMAGES_PER_RING)
+          );
+          return nftMetadata[originalIndex];
+        });
+
+      console.log(
+        "Selected NFTs for display:",
+        nftsToDisplay.map((nft) => ({
+          id: nft.id,
+          name: nft.name,
+          chainId: nft.chainId,
+          chainName: nft.chainName,
+          isScrollNFT: nft.isScrollNFT,
+          position: nftsToDisplay.indexOf(nft),
+        }))
+      );
+
+      this.images = nftsToDisplay.map((nft, index) => {
+        // In the initial transition, we only have Base NFTs
+        const isScrollNFT = false;
+
+        console.log(`Creating image plane for NFT at position ${index}:`, {
+          id: nft.id,
+          name: nft.name,
+          isScrollNFT,
+          chainId: nft.chainId,
+          chainName: nft.chainName,
+          imageUrl: getBestImageUrl(nft),
+        });
+
+        // Create the image plane with enhanced metadata
+        const plane = new ImagePlane({
+          imagePath: getBestImageUrl(nft),
+          width: 800,
+          height: 800,
+          angle: anglePiece * index,
+          worldPoint: new THREE.Vector3(0, 0, depthOffset),
+          isNft: true,
+          nftId: nft.id,
+        });
+
+        // Add additional metadata to the mesh userData
+        const mesh = plane.getMesh();
+        mesh.userData = {
+          ...mesh.userData,
+          isNFT: true,
+          nftId: nft.id,
+          nftIndex: index,
+          nftType: nft.type,
+          isScrollNFT: false, // Always false in initial transition
+          chainId: nft.chainId,
+          chainName: nft.chainName,
+          nftName: nft.name,
+          nftDescription: nft.description,
+          originalPosition: nftMetadata.findIndex((n) => n.id === nft.id),
+        };
+
+        console.log(`Created image plane for NFT at position ${index}:`, {
+          id: nft.id,
+          name: nft.name,
+          isScrollNFT: false,
+          chainId: nft.chainId,
+          chainName: nft.chainName,
+          imageUrl: getBestImageUrl(nft),
+        });
+
+        return plane;
+      });
     } else {
       // Use local images
       console.log("Creating local image planes");
@@ -82,41 +184,43 @@ export class ImageRing extends Freezable {
       );
     }
 
-    // Create arrows between images
-    this.arrows = imagePaths.map((_, index) => {
-      const angle = anglePiece * (index + 0.5); // Position halfway between images
-      const radians = (angle * Math.PI) / 180;
-      const radius = depthOffset * 0.5; // Closer to center
+    // Create arrows between images - ensure consistent number of arrows
+    this.arrows = Array(totalImages)
+      .fill(0)
+      .map((_, index) => {
+        const angle = anglePiece * (index + 0.5); // Position halfway between images
+        const radians = (angle * Math.PI) / 180;
+        const radius = depthOffset * 0.5; // Closer to center
 
-      const arrow = new FloatingArrow({
-        x: Math.cos(radians) * radius,
-        y: 0,
-        z: Math.sin(radians) * radius,
+        const arrow = new FloatingArrow({
+          x: Math.cos(radians) * radius,
+          y: 0,
+          z: Math.sin(radians) * radius,
+        });
+
+        // Set arrow color if in dark mode - keep them green
+        if (this.darkMode) {
+          const arrowMesh = arrow.getMesh();
+          if (
+            arrowMesh &&
+            arrowMesh.material instanceof THREE.MeshBasicMaterial
+          ) {
+            // Keep the default green color
+            // arrowMesh.material.color.set(0x333333); - removed
+          }
+
+          const secondaryMesh = arrow.getSecondaryMesh();
+          if (
+            secondaryMesh &&
+            secondaryMesh.material instanceof THREE.MeshBasicMaterial
+          ) {
+            // Keep the default green color
+            // secondaryMesh.material.color.set(0x333333); - removed
+          }
+        }
+
+        return arrow;
       });
-
-      // Set arrow color if in dark mode - keep them green
-      if (this.darkMode) {
-        const arrowMesh = arrow.getMesh();
-        if (
-          arrowMesh &&
-          arrowMesh.material instanceof THREE.MeshBasicMaterial
-        ) {
-          // Keep the default green color
-          // arrowMesh.material.color.set(0x333333); - removed
-        }
-
-        const secondaryMesh = arrow.getSecondaryMesh();
-        if (
-          secondaryMesh &&
-          secondaryMesh.material instanceof THREE.MeshBasicMaterial
-        ) {
-          // Keep the default green color
-          // secondaryMesh.material.color.set(0x333333); - removed
-        }
-      }
-
-      return arrow;
-    });
 
     this.group = new THREE.Group();
     this.images.forEach((image) => this.group.add(image.getMesh()));
@@ -178,69 +282,71 @@ export class ImageRing extends Freezable {
     this.images.forEach((image) => image.onMouseMove(intersectingObject));
   }
 
-  public onClick(mesh?: THREE.Object3D | null) {
+  public onClick(mesh: THREE.Object3D | null) {
     if (!mesh) return;
 
-    const currentTime = Date.now();
-    const timeDiff = currentTime - this.lastClickTime;
+    // Try to find which image this mesh belongs to
+    let imageIndex = -1;
+    let foundImage = false;
 
-    if (timeDiff < this.DOUBLE_CLICK_DELAY) {
-      // Double click detected
-      console.log("Double click detected, mesh userData:", mesh.userData);
+    // Check if the mesh is one of our image planes or a child of one
+    for (let i = 0; i < this.images.length; i++) {
+      const imageMesh = this.images[i].getMesh();
 
-      // First check if the mesh itself is an NFT (check both uppercase and lowercase)
-      const isNft =
-        mesh.userData && (mesh.userData.isNFT || mesh.userData.isNft);
-      if (isNft && mesh.userData.nftId) {
-        const imageIndex = this.images.findIndex(
-          (plane) => plane.getMesh().userData.nftId === mesh.userData.nftId
-        );
+      if (mesh === imageMesh) {
+        // Direct match
+        imageIndex = i;
+        foundImage = true;
+        break;
+      }
 
-        console.log(
-          `Double-clicked NFT mesh with ID: ${mesh.userData.nftId}, found at index: ${imageIndex}`
-        );
-
-        if (imageIndex !== -1 && this.onDoubleClick) {
-          // Pass both the index and the NFT ID to the callback
-          this.onDoubleClick(imageIndex, mesh.userData.nftId);
-          this.lastClickTime = 0; // Reset to prevent triple-click
-          return;
+      // Check if it's a child of this image
+      if (imageMesh.children) {
+        for (const child of imageMesh.children) {
+          if (mesh === child) {
+            imageIndex = i;
+            foundImage = true;
+            break;
+          }
         }
       }
 
-      // If not found directly, check if it's a child of an image plane
-      const imagePlane = this.images.find(
-        (plane) =>
-          plane.getMesh() === mesh ||
-          (plane.getMesh().children && plane.getMesh().children.includes(mesh))
-      );
+      if (foundImage) break;
+    }
 
-      if (imagePlane) {
-        const imageIndex = this.images.indexOf(imagePlane);
-        const planeMesh = imagePlane.getMesh();
-        // Check both uppercase and lowercase
-        const isNft =
-          planeMesh.userData &&
-          (planeMesh.userData.isNFT || planeMesh.userData.isNft);
-        const nftId = isNft ? planeMesh.userData.nftId : undefined;
+    // If we didn't find a matching image, exit
+    if (imageIndex === -1) return;
 
-        console.log(
-          `Double-clicked image plane at index: ${imageIndex}, NFT ID: ${
-            nftId || "none"
-          }`
-        );
+    // Check if we have a double click
+    const now = Date.now();
+    if (
+      this.lastClickTime &&
+      now - this.lastClickTime < 300 &&
+      this.lastClickedIndex === imageIndex
+    ) {
+      // This is a double click
+      console.log(`Double click detected on image ${imageIndex}`);
 
-        if (this.onDoubleClick) {
-          // Pass both the index and the NFT ID (if available) to the callback
+      // Call the onDoubleClick callback with the index
+      if (this.onDoubleClick) {
+        // If we have NFT metadata, pass the NFT ID
+        if (this.nftMetadata && this.nftMetadata[imageIndex]) {
+          const nftId = this.nftMetadata[imageIndex].id;
+          console.log(
+            `Calling onDoubleClick with index ${imageIndex} and NFT ID ${nftId}`
+          );
           this.onDoubleClick(imageIndex, nftId);
+        } else {
+          // Otherwise just pass the index
+          console.log(`Calling onDoubleClick with index ${imageIndex} only`);
+          this.onDoubleClick(imageIndex);
         }
       }
     }
 
-    this.lastClickTime = currentTime;
-
-    // Also trigger normal click behavior
-    this.images.forEach((image) => image.onClick());
+    // Update the last click time and index
+    this.lastClickTime = now;
+    this.lastClickedIndex = imageIndex;
   }
 
   // Reset the speed of all arrows in this ring

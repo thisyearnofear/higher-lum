@@ -22,6 +22,9 @@ export class FloatingArrow {
   private readonly BASE_SPEED = 0.005;
   private resetInProgress: boolean = false;
   private secondaryArrow: FloatingArrow | null = null;
+  private lastUpdateTime: number = 0;
+  private errorCount: number = 0;
+  private readonly MAX_ERROR_COUNT = 3;
 
   constructor({
     x = 0,
@@ -58,6 +61,7 @@ export class FloatingArrow {
     this.mesh = new THREE.Mesh(geometry, material);
     this.mesh.position.set(x, y, z);
     this.basePosition = new THREE.Vector3(x, y, z);
+    this.lastUpdateTime = Date.now();
 
     // Setup continuous base float animation
     this.floatAnimation = new Animation({
@@ -90,71 +94,106 @@ export class FloatingArrow {
   }
 
   update(scrollSpeed: number = 0) {
-    // Limit the impact of extreme scroll speeds
-    const clampedScrollSpeed = Math.max(-0.1, Math.min(0.1, scrollSpeed));
+    try {
+      // Throttle updates to prevent performance issues
+      const currentTime = Date.now();
+      const deltaTime = currentTime - this.lastUpdateTime;
+      if (deltaTime < 16) {
+        // Limit to ~60fps
+        return;
+      }
+      this.lastUpdateTime = currentTime;
 
-    // Add base upward motion to scroll speed
-    const effectiveSpeed = clampedScrollSpeed + this.BASE_SPEED;
+      // Limit the impact of extreme scroll speeds
+      const clampedScrollSpeed = Math.max(-0.1, Math.min(0.1, scrollSpeed));
 
-    // Update current speed with momentum
-    this.currentSpeed =
-      this.currentSpeed * this.SPEED_DECAY + effectiveSpeed * this.SPEED_SCALE;
+      // Add base upward motion to scroll speed
+      const effectiveSpeed = clampedScrollSpeed + this.BASE_SPEED;
 
-    // Accumulate total offset
-    this.totalOffset += this.currentSpeed;
+      // Update current speed with momentum
+      this.currentSpeed =
+        this.currentSpeed * this.SPEED_DECAY +
+        effectiveSpeed * this.SPEED_SCALE;
 
-    // Handle position reset with overlap
-    if (
-      Math.abs(this.totalOffset) > this.RESET_THRESHOLD &&
-      !this.resetInProgress
-    ) {
-      this.resetInProgress = true;
-      const resetDirection = this.totalOffset > 0 ? -1 : 1;
-      this.totalOffset = resetDirection * this.OVERLAP_DISTANCE;
+      // Accumulate total offset
+      this.totalOffset += this.currentSpeed;
 
-      // Update secondary arrow position for seamless transition
-      if (this.secondaryArrow) {
-        this.secondaryArrow.setOffset(
-          this.totalOffset + resetDirection * this.RESET_THRESHOLD
-        );
+      // Handle position reset with overlap
+      if (
+        Math.abs(this.totalOffset) > this.RESET_THRESHOLD &&
+        !this.resetInProgress
+      ) {
+        this.resetInProgress = true;
+        const resetDirection = this.totalOffset > 0 ? -1 : 1;
+        this.totalOffset = resetDirection * this.OVERLAP_DISTANCE;
+
+        // Update secondary arrow position for seamless transition
+        if (this.secondaryArrow) {
+          this.secondaryArrow.setOffset(
+            this.totalOffset + resetDirection * this.RESET_THRESHOLD
+          );
+        }
+
+        // Use setTimeout instead of requestAnimationFrame for more reliable timing
+        setTimeout(() => {
+          this.resetInProgress = false;
+        }, 50);
       }
 
-      requestAnimationFrame(() => {
-        this.resetInProgress = false;
+      // Update float animation
+      this.floatAnimation.update((val) => {
+        const floatOffset = val;
+        this.mesh.position.x = this.basePosition.x;
+        this.mesh.position.z = this.basePosition.z;
+        this.mesh.position.y =
+          this.basePosition.y + floatOffset + this.totalOffset;
       });
-    }
 
-    // Update float animation
-    this.floatAnimation.update((val) => {
-      const floatOffset = val;
-      this.mesh.position.x = this.basePosition.x;
-      this.mesh.position.z = this.basePosition.z;
-      this.mesh.position.y =
-        this.basePosition.y + floatOffset + this.totalOffset;
-    });
+      // Update rotation animation
+      this.rotateAnimation.update((val) => {
+        this.mesh.rotation.y = val * 0.2;
+      });
 
-    // Update rotation animation
-    this.rotateAnimation.update((val) => {
-      this.mesh.rotation.y = val * 0.2;
-    });
+      // Update secondary arrow if it exists
+      if (this.secondaryArrow) {
+        this.secondaryArrow.update(scrollSpeed);
+      }
 
-    // Update secondary arrow if it exists
-    if (this.secondaryArrow) {
-      this.secondaryArrow.update(scrollSpeed);
-    }
+      // Reset animations when complete
+      if (!this.floatAnimation.isAnimating) {
+        this.floatAnimation.start();
+      }
+      if (!this.rotateAnimation.isAnimating) {
+        this.rotateAnimation.start();
+      }
 
-    // Reset animations when complete
-    if (!this.floatAnimation.isAnimating) {
-      this.floatAnimation.start();
-    }
-    if (!this.rotateAnimation.isAnimating) {
-      this.rotateAnimation.start();
+      // Reset error count on successful update
+      this.errorCount = 0;
+    } catch (error) {
+      console.error("Error updating FloatingArrow:", error);
+      this.errorCount++;
+
+      // If we've had too many errors, reset the arrow to a stable state
+      if (this.errorCount > this.MAX_ERROR_COUNT) {
+        this.resetSpeed();
+        this.errorCount = 0;
+      }
     }
   }
 
   // Reset the arrow's speed to a stable state
   resetSpeed() {
     this.currentSpeed = this.BASE_SPEED;
+    this.resetInProgress = false;
+
+    // Restart animations
+    if (this.floatAnimation) {
+      this.floatAnimation.start();
+    }
+    if (this.rotateAnimation) {
+      this.rotateAnimation.start();
+    }
+
     if (this.secondaryArrow) {
       this.secondaryArrow.resetSpeed();
     }
@@ -174,7 +213,11 @@ export class FloatingArrow {
 
   dispose() {
     if (this.mesh.material) {
-      (this.mesh.material as THREE.Material).dispose();
+      if (Array.isArray(this.mesh.material)) {
+        this.mesh.material.forEach((material) => material.dispose());
+      } else {
+        this.mesh.material.dispose();
+      }
     }
     if (this.mesh.geometry) {
       this.mesh.geometry.dispose();

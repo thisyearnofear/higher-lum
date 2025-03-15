@@ -1,0 +1,7 @@
+node_modules/
+.next/
+out/
+public/
+*.d.ts
+next.config.js
+next-env.d.ts 

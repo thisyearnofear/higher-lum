@@ -1,13 +1,7 @@
 /**
  * Service for fetching NFT data from Grove or other decentralized storage
  */
-import {
-  createPublicClient,
-  http,
-  getContract,
-  PublicClient,
-  Chain,
-} from "viem";
+import { createPublicClient, http, getContract, PublicClient } from "viem";
 import { baseSepolia, scrollSepolia } from "@/config/wallet-config";
 import { COLLECTION_ADDRESS } from "@/config/nft-config";
 import { NFTType, NFTMetadata, OriginalNFT } from "@/types/nft-types";
@@ -496,12 +490,14 @@ export async function fetchNFTsFromGrove(
 
     // Create a client for the specified chain
     let chainClient: PublicClient;
+    let chainName: string;
     if (chainId === 84532) {
       // Base Sepolia
       chainClient = createPublicClient({
         chain: baseSepolia,
         transport: http(baseSepolia.rpcUrls.default.http[0]),
       });
+      chainName = "Base Sepolia";
       console.log("Using Base Sepolia client");
     } else if (chainId === 534351) {
       // Scroll Sepolia
@@ -509,24 +505,18 @@ export async function fetchNFTsFromGrove(
         chain: scrollSepolia,
         transport: http(scrollSepolia.rpcUrls.default.http[0]),
       });
+      chainName = "Scroll Sepolia";
       console.log("Using Scroll Sepolia client");
     } else {
-      // Fallback to Base Sepolia for unsupported chains
-      console.warn(
-        `Unsupported chain ID ${chainId}, using Base Sepolia client as fallback`
-      );
-      chainClient = createPublicClient({
-        chain: baseSepolia,
-        transport: http(baseSepolia.rpcUrls.default.http[0]),
-      });
+      throw new Error(`Unsupported chain ID: ${chainId}`);
     }
 
-    // Choose the appropriate ABI based on contract type
+    // Choose the appropriate ABI based on contract type and chain
     const contractAbi =
       contractType === "ERC721"
-        ? contractAddress.toLowerCase() === COLLECTION_ADDRESS.toLowerCase()
-          ? HigherBaseOriginalsABI
-          : ScrollifyOriginalsABI
+        ? chainId === 534351
+          ? ScrollifyOriginalsABI
+          : HigherBaseOriginalsABI
         : ScrollifyEditionsABI;
 
     // Create a contract instance
@@ -538,14 +528,28 @@ export async function fetchNFTsFromGrove(
 
     // Get total supply
     let totalSupply: bigint;
+    let useTokenIds = false;
     try {
+      // First try to get totalSupply
       totalSupply = (await contract.read.totalSupply()) as bigint;
+      console.log(`Total NFTs in collection: ${totalSupply}`);
     } catch (error) {
-      console.error("Error fetching total supply:", error);
-      throw new Error("Failed to fetch total supply from contract");
-    }
+      console.warn(
+        "Contract doesn't have totalSupply function, using fallback approach:",
+        error
+      );
 
-    console.log(`Total NFTs in collection: ${totalSupply}`);
+      // Fallback: Try to get a list of token IDs owned by the contract deployer or a known holder
+      try {
+        // For contracts without totalSupply, we'll use a fixed number of NFTs
+        totalSupply = BigInt(16); // Default to 16 NFTs
+        useTokenIds = true;
+        console.log(`Using fallback approach with ${totalSupply} NFTs`);
+      } catch (fallbackError) {
+        console.error("Fallback approach also failed:", fallbackError);
+        throw new Error("Failed to determine collection size");
+      }
+    }
 
     // Limit to 16 NFTs for performance
     const nftCount = Math.min(Number(totalSupply), 16);
@@ -555,18 +559,48 @@ export async function fetchNFTsFromGrove(
 
     for (let i = 0; i < nftCount; i++) {
       try {
-        // Get token ID at index
-        const tokenIdBigInt = (await contract.read.tokenByIndex([
-          BigInt(i),
-        ])) as bigint;
+        // Get token ID at index or use index directly for fallback
+        let tokenId: number;
+        let tokenIdBigInt: bigint;
+
+        if (useTokenIds) {
+          // In fallback mode, just use the index as the token ID
+          tokenIdBigInt = BigInt(i);
+          tokenId = i;
+        } else {
+          // Normal mode: get token ID at index
+          try {
+            tokenIdBigInt = (await contract.read.tokenByIndex([
+              BigInt(i),
+            ])) as bigint;
+            tokenId = Number(tokenIdBigInt);
+          } catch (tokenIndexError) {
+            console.warn(
+              `tokenByIndex failed for index ${i}, using index as token ID:`,
+              tokenIndexError
+            );
+            tokenIdBigInt = BigInt(i);
+            tokenId = i;
+          }
+        }
 
         // Get token URI - different method name for ERC1155
-        const tokenURI =
-          contractType === "ERC721"
-            ? await contract.read.tokenURI([tokenIdBigInt])
-            : await contract.read.uri([tokenIdBigInt]);
+        let tokenURI: string;
+        try {
+          tokenURI =
+            contractType === "ERC721"
+              ? ((await contract.read.tokenURI([tokenIdBigInt])) as string)
+              : ((await contract.read.uri([tokenIdBigInt])) as string);
+        } catch (tokenURIError) {
+          console.warn(
+            `Failed to get tokenURI for ID ${tokenId}:`,
+            tokenURIError
+          );
+          // Use a placeholder URI if we can't get the real one
+          tokenURI = `ipfs://placeholder/${tokenId}`;
+        }
 
-        console.log(`Token URI for ID ${tokenIdBigInt}: ${tokenURI}`);
+        console.log(`Token URI for ID ${tokenId}: ${tokenURI}`);
 
         // Fetch metadata from IPFS
         const metadata = await fetchIPFSMetadata(tokenURI as string);
@@ -590,36 +624,47 @@ export async function fetchNFTsFromGrove(
         const nftType =
           contractType === "ERC721" ? NFTType.ORIGINAL : NFTType.EDITION;
 
-        // Use local images for faster loading but store Grove URL for later
-        nfts.push({
-          id: tokenIdBigInt.toString(),
+        // Determine if this is a Scroll NFT based on the chain ID
+        const isScrollNFT = chainId === 534351;
+
+        // Create NFT metadata with explicit chain information
+        const nftMetadata: NFTMetadata = {
+          id: tokenId.toString(),
           name:
             (metadata.name as string) ||
-            `${chainId === 534351 ? "Scrollify" : "Higher"} ${
+            `${isScrollNFT ? "Scrollify" : "Higher"} ${
               nftType === NFTType.ORIGINAL ? "Original" : "Edition"
-            } #${tokenIdBigInt.toString()}`,
+            } #${tokenId}`,
           description:
             (metadata.description as string) ||
-            `A ${chainId === 534351 ? "Scrollify" : "Higher"} ${
+            `A ${isScrollNFT ? "Scrollify" : "Higher"} ${
               nftType === NFTType.ORIGINAL ? "Original" : "Edition"
             } NFT from the collection`,
-          image: imageUrl, // Use local image for faster loading
-          tokenId: Number(tokenIdBigInt),
+          image: imageUrl,
+          tokenId: tokenId,
           type: nftType,
-          originalId: Number(tokenIdBigInt),
-          groveUrl, // Store the Grove hash for later use
+          originalId: tokenId,
+          groveUrl,
           attributes: (metadata.attributes as Array<{
             trait_type: string;
             value: string | number;
           }>) || [
             {
               trait_type: "Type",
-              value: `${chainId === 534351 ? "Scrollify" : "Higher"} ${
+              value: `${isScrollNFT ? "Scrollify" : "Higher"} ${
                 nftType === NFTType.ORIGINAL ? "Original" : "Edition"
               }`,
             },
           ],
-        });
+          chainId: chainId,
+          chainName: chainName,
+          contractAddress: contractAddress,
+          isScrollNFT: isScrollNFT,
+          tokenURI: tokenURI as string,
+        };
+
+        console.log(`Created NFT metadata for token ${tokenId}:`, nftMetadata);
+        nfts.push(nftMetadata);
       } catch (error) {
         console.error(`Error fetching NFT at index ${i}:`, error);
       }

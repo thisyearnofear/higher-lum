@@ -189,7 +189,7 @@ export const useThreeScene = (canvas: HTMLCanvasElement) => {
       event.preventDefault();
       const mesh = getIntersectingObject(event);
       if (mesh) {
-        ringsRef.current.forEach((ring) => ring.onClick());
+        ringsRef.current.forEach((ring) => ring.onClick(mesh));
       }
     };
 

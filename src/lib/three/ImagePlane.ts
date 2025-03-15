@@ -38,6 +38,23 @@ export class ImagePlane extends Freezable {
     const loader = new THREE.TextureLoader();
     loader.crossOrigin = "anonymous";
 
+    // Create consistent geometry for both NFT and local images
+    // Use a slightly wider angle for NFT images to ensure they're visible
+    // The original was 360 / 16 / 70 which is approximately 0.32 degrees
+    const angleWidth = isNft ? 360 / 16 / 60 : 360 / 16 / 70; // Slightly wider for NFTs
+
+    const geometry = new THREE.CylinderGeometry(
+      1,
+      1,
+      0.4,
+      8,
+      1,
+      true,
+      0,
+      angleWidth
+    );
+    geometry.rotateY(Math.PI / 1);
+
     // Check cache first
     if (textureCache.has(imagePath)) {
       const texture = textureCache.get(imagePath)!;
@@ -45,18 +62,6 @@ export class ImagePlane extends Freezable {
         map: texture,
         side: THREE.DoubleSide,
       });
-
-      const geometry = new THREE.CylinderGeometry(
-        1,
-        1,
-        0.4,
-        8,
-        1,
-        true,
-        0,
-        360 / 16 / 70
-      );
-      geometry.rotateY(Math.PI / 1);
 
       this.mesh = new THREE.Mesh(geometry, material);
 
@@ -72,18 +77,6 @@ export class ImagePlane extends Freezable {
         color: 0xcccccc,
         side: THREE.DoubleSide,
       });
-
-      const geometry = new THREE.CylinderGeometry(
-        1,
-        1,
-        0.4,
-        8,
-        1,
-        true,
-        0,
-        360 / 16 / 70
-      );
-      geometry.rotateY(Math.PI / 1);
 
       this.mesh = new THREE.Mesh(geometry, placeholderMaterial);
 
@@ -126,6 +119,7 @@ export class ImagePlane extends Freezable {
       );
     }
 
+    // Use the same animation settings for both NFT and local images
     this.scaleAnimation = new Animation({
       startValue: 1,
       endValue: 1.2,

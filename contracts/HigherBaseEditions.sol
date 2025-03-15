@@ -147,8 +147,6 @@ export function EditionMinter({
       const provider = new ethers.BrowserProvider(walletClient as any);
       const signer = await provider.getSigner();
 
-      console.log("Minting with address:", address);
-
       // Call the mintEdition function with the signer
       const result = (await mintEdition(originalId, signer)) as MintResult;
 
