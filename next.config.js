@@ -3,7 +3,7 @@ const nextConfig = {
   reactStrictMode: true,
   output: "standalone", // This ensures better compatibility with Vercel
   images: {
-    domains: ["futuretape.xyz"], // Allow images from futuretape.xyz
+    domains: ["futuretape.xyz", "api.grove.storage"], // Allow images from futuretape.xyz and api.grove.storage
   },
   // Optimize for static export
   experimental: {

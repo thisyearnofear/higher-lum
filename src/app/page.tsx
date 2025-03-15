@@ -9,7 +9,11 @@ import { NFTModal } from "@/components/NFTModal";
 import { InfoModal } from "@/components/InfoModal";
 import { checkNFTsReady, fetchNFTsFromGrove } from "@/services/nftService";
 import { isContractReady } from "@/services/contract";
-import { COLLECTION_ADDRESS } from "@/config/nft-config";
+import {
+  COLLECTION_ADDRESS,
+  SCROLLIFY_ORIGINALS_ADDRESS,
+  SCROLLIFY_EDITIONS_ADDRESS,
+} from "@/config/nft-config";
 import { NFTMetadata } from "@/types/nft-types";
 
 export default function Home() {
@@ -18,11 +22,15 @@ export default function Home() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const momentumPausedRef = useRef(false);
   const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
+  const [selectedNFTId, setSelectedNFTId] = useState<string | undefined>(
+    undefined
+  );
 
   // State for the Higher button and on-chain experience
   const [higherButtonReady, setHigherButtonReady] = useState(false);
   const [isHigherLoading, setIsHigherLoading] = useState(false);
   const [isOnChainMode, setIsOnChainMode] = useState(false);
+  const isOnChainModeRef = useRef(false); // Add a ref to track the current mode
   const [nftMetadata, setNftMetadata] = useState<NFTMetadata[]>([]);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -42,29 +50,52 @@ export default function Home() {
   const VISIBLE_RINGS = 100;
 
   // Function to handle NFT selection
-  const handleNFTSelect = useCallback((imageIndex: number) => {
-    setSelectedNFT(imageIndex);
-    setIsModalOpen(true);
-    momentumPausedRef.current = true;
-  }, []);
+  const handleNFTSelect = useCallback(
+    (imageIndex: number, nftId?: string) => {
+      console.log(
+        `NFT selected: index=${imageIndex}, nftId=${
+          nftId || "none"
+        }, isOnChainMode=${isOnChainMode}`
+      );
+      setSelectedNFT(imageIndex);
+      setSelectedNFTId(nftId);
+      setIsModalOpen(true);
+      momentumPausedRef.current = true;
+    },
+    [isOnChainMode]
+  );
 
   // Function to create a ring
   const createRing = useCallback(
     (index: number): ImageRing => {
-      if (isOnChainMode && nftMetadata.length > 0) {
+      // Get the current mode from the ref
+      const currentIsOnChainMode = isOnChainModeRef.current;
+      const currentNftMetadata = nftMetadata;
+
+      console.log(
+        `Creating ring with index ${index}, isOnChainMode (ref): ${currentIsOnChainMode}, isOnChainMode (state): ${isOnChainMode}, nftMetadata length: ${currentNftMetadata.length}`
+      );
+
+      // Only create on-chain rings if we're in on-chain mode AND have NFT metadata
+      const useOnChainMode =
+        currentIsOnChainMode && currentNftMetadata.length > 0;
+
+      if (useOnChainMode) {
         // Create ring with NFT metadata
+        console.log("Creating on-chain ring with NFT metadata");
         return new ImageRing({
           angleOffset: 20 * index,
-          imagePaths: Array(nftMetadata.length).fill(""), // Placeholder, not used
+          imagePaths: Array(currentNftMetadata.length).fill(""), // Placeholder, not used
           yPosition: VERTICAL_OFFSET * index,
           depthOffset: DEPTH_OFFSET,
           isOdd: index % 2 === 0,
           onDoubleClick: handleNFTSelect,
-          nftMetadata: nftMetadata,
+          nftMetadata: currentNftMetadata,
           darkMode: true,
         });
       } else {
         // Create regular ring with local images
+        console.log("Creating off-chain ring with local images");
         const imagePaths = Array(16)
           .fill(0)
           .map((_, index) => `/image-${index + 1}.jpg`);
@@ -75,6 +106,9 @@ export default function Home() {
           depthOffset: DEPTH_OFFSET,
           isOdd: index % 2 === 0,
           onDoubleClick: handleNFTSelect,
+          // Explicitly pass undefined for nftMetadata to ensure isNftMode is false
+          nftMetadata: undefined,
+          darkMode: false,
         });
       }
     },
@@ -83,9 +117,12 @@ export default function Home() {
 
   // Function to handle modal close
   const handleModalClose = () => {
+    console.log("Closing modal, resetting state");
+
     // First set the modal to closing state
     setIsModalOpen(false);
     setSelectedNFT(null);
+    setSelectedNFTId(undefined);
 
     // Wait a frame before resuming animation to ensure smooth transition
     requestAnimationFrame(() => {
@@ -100,6 +137,10 @@ export default function Home() {
 
     // If not in on-chain mode and button is not ready, don't proceed
     if (!isOnChainMode && !higherButtonReady) return;
+
+    console.log(
+      `Starting transition, current mode: isOnChainMode=${isOnChainMode}`
+    );
 
     transitionInProgressRef.current = true;
     setIsHigherLoading(true);
@@ -140,11 +181,18 @@ export default function Home() {
 
             // Important: We're not recreating the scene or music player,
             // just changing a flag that affects how new rings are created
+            console.log("Setting isOnChainMode to false");
+
+            // Update the ref first, then the state
+            isOnChainModeRef.current = false;
             setIsOnChainMode(false);
 
-            // Force replace all visible rings immediately
+            // Force replace all visible rings immediately after state update
             setTimeout(() => {
               if (sceneRef.current && ringsRef.current && cameraRef.current) {
+                console.log(
+                  "Replacing all rings after mode change to off-chain"
+                );
                 const rings = ringsRef.current;
                 const scene = sceneRef.current;
                 const cameraY = cameraRef.current.position.y;
@@ -160,6 +208,9 @@ export default function Home() {
                 rings.clear();
 
                 // Create new rings with the updated mode
+                console.log(
+                  `Creating new rings with isOnChainMode=${isOnChainMode}, isOnChainMode (ref): ${isOnChainModeRef.current}, nftMetadata length=${nftMetadata.length}`
+                );
                 for (let i = startIndex; i < endIndex; i++) {
                   const ring = createRing(i);
                   rings.set(i, ring);
@@ -173,10 +224,10 @@ export default function Home() {
 
                 currentRingIndexRef.current = baseIndex;
               }
-            }, 100);
 
-            transitionInProgressRef.current = false;
-            setIsHigherLoading(false);
+              transitionInProgressRef.current = false;
+              setIsHigherLoading(false);
+            }, 100); // Wait for state to update
           }
         };
 
@@ -197,6 +248,7 @@ export default function Home() {
 
     try {
       // Fetch NFT data if not already loaded
+      let nfts = nftMetadata;
       if (nftMetadata.length === 0) {
         // Start loading animation
         setTransitionLoadingProgress(10);
@@ -213,10 +265,69 @@ export default function Home() {
 
         setTransitionLoadingProgress(30);
 
-        // Pre-fetch NFT data - this loads the metadata but uses local images
-        const nfts = await fetchNFTsFromGrove(COLLECTION_ADDRESS);
-        console.log(`Fetched ${nfts.length} NFTs from Grove`);
+        // Fetch NFTs from both Base Sepolia and Scroll Sepolia
+        try {
+          // First try Base Sepolia (Higher Originals)
+          const baseNfts = await fetchNFTsFromGrove(
+            COLLECTION_ADDRESS,
+            84532,
+            "ERC721"
+          );
+          console.log(`Fetched ${baseNfts.length} NFTs from Base Sepolia`);
+
+          // Then try Scroll Sepolia (Scrollify Originals)
+          let scrollOriginalsNfts: NFTMetadata[] = [];
+          try {
+            scrollOriginalsNfts = await fetchNFTsFromGrove(
+              SCROLLIFY_ORIGINALS_ADDRESS,
+              534351,
+              "ERC721"
+            );
+            console.log(
+              `Fetched ${scrollOriginalsNfts.length} NFTs from Scroll Sepolia (Originals)`
+            );
+          } catch (error) {
+            console.warn("Error fetching Scrollify Originals:", error);
+          }
+
+          // Combine all NFTs from originals contracts only
+          nfts = [...baseNfts, ...scrollOriginalsNfts];
+          console.log(`Combined ${nfts.length} NFTs from originals contracts`);
+
+          // If we have no NFTs, don't proceed with the transition
+          if (nfts.length === 0) {
+            console.error("No NFTs fetched from any source");
+            transitionInProgressRef.current = false;
+            setIsHigherLoading(false);
+            return;
+          }
+        } catch (error) {
+          console.error("Error fetching NFTs from multiple sources:", error);
+
+          // Fallback to just Base Sepolia if there's an error
+          try {
+            nfts = await fetchNFTsFromGrove(COLLECTION_ADDRESS);
+            console.log(
+              `Fallback: Fetched ${nfts.length} NFTs from Base Sepolia only`
+            );
+
+            // If we still have no NFTs, don't proceed
+            if (nfts.length === 0) {
+              console.error("No NFTs fetched from fallback source");
+              transitionInProgressRef.current = false;
+              setIsHigherLoading(false);
+              return;
+            }
+          } catch (fallbackError) {
+            console.error("Error fetching fallback NFTs:", fallbackError);
+            transitionInProgressRef.current = false;
+            setIsHigherLoading(false);
+            return;
+          }
+        }
+
         setTransitionLoadingProgress(80);
+        // Store the NFT metadata locally first
         setNftMetadata(nfts);
         setTransitionLoadingProgress(100);
       } else {
@@ -256,11 +367,20 @@ export default function Home() {
 
             // Important: We're not recreating the scene or music player,
             // just changing a flag that affects how new rings are created
+            console.log("Setting isOnChainMode to true");
+
+            // Update the ref first, then the state
+            isOnChainModeRef.current = true;
             setIsOnChainMode(true);
 
-            // Force replace all visible rings immediately
+            // Force replace all visible rings immediately after state update
             setTimeout(() => {
               if (sceneRef.current && ringsRef.current && cameraRef.current) {
+                console.log(
+                  "Replacing all rings after mode change to on-chain"
+                );
+                console.log(`NFT metadata available: ${nfts.length} items`);
+
                 const rings = ringsRef.current;
                 const scene = sceneRef.current;
                 const cameraY = cameraRef.current.position.y;
@@ -275,9 +395,30 @@ export default function Home() {
                 }
                 rings.clear();
 
+                // Create a custom ring creation function that uses the local nfts variable
+                const createOnChainRing = (index: number): ImageRing => {
+                  console.log(
+                    `Creating on-chain ring with index ${index} using local nfts array (${nfts.length} items)`
+                  );
+                  return new ImageRing({
+                    angleOffset: 20 * index,
+                    imagePaths: Array(nfts.length).fill(""), // Placeholder, not used
+                    yPosition: VERTICAL_OFFSET * index,
+                    depthOffset: DEPTH_OFFSET,
+                    isOdd: index % 2 === 0,
+                    onDoubleClick: handleNFTSelect,
+                    nftMetadata: nfts,
+                    darkMode: true,
+                  });
+                };
+
                 // Create new rings with the updated mode
+                console.log(
+                  `Creating new rings with isOnChainMode=${isOnChainMode}, isOnChainMode (ref): ${isOnChainModeRef.current}, nftMetadata length=${nfts.length}`
+                );
                 for (let i = startIndex; i < endIndex; i++) {
-                  const ring = createRing(i);
+                  // Use the custom function instead of createRing
+                  const ring = createOnChainRing(i);
                   rings.set(i, ring);
                   scene.add(ring.getGroup());
 
@@ -289,10 +430,10 @@ export default function Home() {
 
                 currentRingIndexRef.current = baseIndex;
               }
-            }, 100);
 
-            transitionInProgressRef.current = false;
-            setIsHigherLoading(false);
+              transitionInProgressRef.current = false;
+              setIsHigherLoading(false);
+            }, 100); // Wait for state to update
           }
         };
 
@@ -336,33 +477,50 @@ export default function Home() {
   useEffect(() => {
     if (!sceneRef.current || !ringsRef.current) return;
 
-    const rings = ringsRef.current;
-    const scene = sceneRef.current;
+    console.log(`Effect triggered: isOnChainMode changed to ${isOnChainMode}`);
 
-    // Force replace all rings when mode changes
-    const newRings = new Map<number, ImageRing>();
-    const startIndex = -VISIBLE_RINGS / 2;
-    const endIndex = VISIBLE_RINGS / 2;
+    // Wait a moment to ensure the state has been updated
+    setTimeout(() => {
+      const rings = ringsRef.current;
+      const scene = sceneRef.current;
 
-    // Remove all existing rings
-    for (const ring of rings.values()) {
-      scene.remove(ring.getGroup());
-      ring.dispose();
-    }
-    rings.clear();
+      if (!rings || !scene) return;
 
-    // Create new rings
-    for (let i = startIndex; i < endIndex; i++) {
-      const ring = createRing(i);
-      newRings.set(i, ring);
-      scene.add(ring.getGroup());
-    }
+      console.log(
+        `Creating new rings with isOnChainMode=${isOnChainMode}, nftMetadata length=${nftMetadata.length}`
+      );
 
-    // Update rings reference
-    for (const [index, ring] of newRings) {
-      rings.set(index, ring);
-    }
-  }, [isOnChainMode, VISIBLE_RINGS, createRing]);
+      // Force replace all rings when mode changes
+      const newRings = new Map<number, ImageRing>();
+      const startIndex = -VISIBLE_RINGS / 2;
+      const endIndex = VISIBLE_RINGS / 2;
+
+      // Remove all existing rings
+      for (const ring of rings.values()) {
+        scene.remove(ring.getGroup());
+        ring.dispose();
+      }
+      rings.clear();
+
+      // Create new rings
+      for (let i = startIndex; i < endIndex; i++) {
+        const ring = createRing(i);
+        newRings.set(i, ring);
+        scene.add(ring.getGroup());
+      }
+
+      // Update rings reference
+      for (const [index, ring] of newRings) {
+        rings.set(index, ring);
+      }
+    }, 50); // Small delay to ensure state is updated
+  }, [isOnChainMode, VISIBLE_RINGS, createRing, nftMetadata]);
+
+  // Update the ref when isOnChainMode changes
+  useEffect(() => {
+    isOnChainModeRef.current = isOnChainMode;
+    console.log(`isOnChainMode changed to ${isOnChainMode}, updating ref`);
+  }, [isOnChainMode]);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -424,6 +582,13 @@ export default function Home() {
         Math.abs(baseIndex - currentRingIndexRef.current) >
         VISIBLE_RINGS / 4
       ) {
+        // Get the current mode from the ref
+        const currentIsOnChainMode = isOnChainModeRef.current;
+
+        console.log(
+          `Updating rings, baseIndex=${baseIndex}, currentRingIndex=${currentRingIndexRef.current}, isOnChainMode (ref): ${currentIsOnChainMode}, isOnChainMode (state): ${isOnChainMode}`
+        );
+
         const newRings = new Map<number, ImageRing>();
         const startIndex = baseIndex - VISIBLE_RINGS / 2;
         const endIndex = baseIndex + VISIBLE_RINGS / 2;
@@ -440,15 +605,23 @@ export default function Home() {
             // 2. In off-chain mode but ring is an NFT ring
             // 3. Dark mode setting doesn't match current mode
             const needsReplacement =
-              (isOnChainMode && !isNftRing) ||
-              (!isOnChainMode && isNftRing) ||
-              ringDarkMode !== isOnChainMode;
+              (currentIsOnChainMode && !isNftRing) ||
+              (!currentIsOnChainMode && isNftRing) ||
+              ringDarkMode !== currentIsOnChainMode;
+
+            console.log(
+              `Ring ${i}: isNftRing=${isNftRing}, ringDarkMode=${ringDarkMode}, needsReplacement=${needsReplacement}, isOnChainMode (ref): ${currentIsOnChainMode}`
+            );
 
             if (!needsReplacement) {
               newRings.set(i, existingRing);
               rings.delete(i);
             } else {
               // Remove the old ring and create a new one
+              console.log(
+                `Replacing ring ${i} due to mode mismatch: isNftRing=${isNftRing}, isOnChainMode (ref): ${currentIsOnChainMode}, ringDarkMode=${ringDarkMode}`
+              );
+
               const scene = sceneRef.current as THREE.Scene;
               scene.remove(existingRing.getGroup());
               existingRing.dispose();
@@ -460,6 +633,10 @@ export default function Home() {
             }
           } else {
             // Create new ring
+            console.log(
+              `Creating new ring ${i} for isOnChainMode (ref): ${currentIsOnChainMode}`
+            );
+
             const ring = createRing(i);
             newRings.set(i, ring);
             const scene = sceneRef.current as THREE.Scene;
@@ -484,8 +661,17 @@ export default function Home() {
     }
 
     function init() {
+      // Get the current mode from the ref
+      const currentIsOnChainMode = isOnChainModeRef.current;
+
       // Set background color based on mode
-      scene.background = new THREE.Color(isOnChainMode ? 0x000000 : 0xffffff);
+      const bgColor = currentIsOnChainMode ? 0x000000 : 0xffffff;
+      console.log(
+        `Setting initial background color: ${bgColor.toString(
+          16
+        )}, isOnChainMode (ref): ${currentIsOnChainMode}, isOnChainMode (state): ${isOnChainMode}`
+      );
+      scene.background = new THREE.Color(bgColor);
 
       const ambientLight = new THREE.AmbientLight(0xffffff);
       ambientLight.intensity = 4.5;
@@ -644,6 +830,7 @@ export default function Home() {
         onClose={handleModalClose}
         isOnChainMode={isOnChainMode}
         onChainNFTs={nftMetadata}
+        selectedNFTId={selectedNFTId}
       />
       <InfoModal
         isOpen={isInfoModalOpen}

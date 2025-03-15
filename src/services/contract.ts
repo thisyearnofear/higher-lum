@@ -4,8 +4,14 @@
 
 import { createPublicClient, http, getContract } from "viem";
 import { baseSepolia } from "@/config/wallet-config";
-import { COLLECTION_ADDRESS } from "@/config/nft-config";
+import {
+  COLLECTION_ADDRESS,
+  EDITIONS_ADDRESS,
+  SCROLLIFY_ORIGINALS_ADDRESS,
+  SCROLLIFY_EDITIONS_ADDRESS,
+} from "@/config/nft-config";
 import { OriginalNFT } from "@/types/nft-types";
+import { ethers } from "ethers";
 
 // ABI for the HigherBaseOriginals contract (minimal version for what we need)
 const HigherBaseOriginalsABI = [
@@ -58,6 +64,229 @@ const HigherBaseOriginalsABI = [
       },
     ],
     stateMutability: "view",
+    type: "function",
+  },
+];
+
+// ABI for the HigherBaseEditions contract (minimal version for what we need)
+const HigherBaseEditionsABI = [
+  {
+    inputs: [
+      {
+        internalType: "uint256",
+        name: "originalId",
+        type: "uint256",
+      },
+    ],
+    name: "mintEdition",
+    outputs: [],
+    stateMutability: "payable",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "uint256",
+        name: "originalId",
+        type: "uint256",
+      },
+    ],
+    name: "editionsMinted",
+    outputs: [
+      {
+        internalType: "uint256",
+        name: "",
+        type: "uint256",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [],
+    name: "editionPrice",
+    outputs: [
+      {
+        internalType: "uint256",
+        name: "",
+        type: "uint256",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+];
+
+// ABI for the ScrollifyOriginals contract
+const ScrollifyOriginalsABI = [
+  {
+    inputs: [
+      {
+        internalType: "uint256",
+        name: "tokenId",
+        type: "uint256",
+      },
+    ],
+    name: "tokenURI",
+    outputs: [
+      {
+        internalType: "string",
+        name: "",
+        type: "string",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [],
+    name: "totalSupply",
+    outputs: [
+      {
+        internalType: "uint256",
+        name: "",
+        type: "uint256",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "uint256",
+        name: "index",
+        type: "uint256",
+      },
+    ],
+    name: "tokenByIndex",
+    outputs: [
+      {
+        internalType: "uint256",
+        name: "",
+        type: "uint256",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "uint256",
+        name: "originalId",
+        type: "uint256",
+      },
+    ],
+    name: "editionsMinted",
+    outputs: [
+      {
+        internalType: "uint256",
+        name: "",
+        type: "uint256",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+];
+
+// ABI for the ScrollifyEditions contract
+const ScrollifyEditionsABI = [
+  {
+    inputs: [
+      {
+        internalType: "uint256",
+        name: "tokenId",
+        type: "uint256",
+      },
+    ],
+    name: "uri",
+    outputs: [
+      {
+        internalType: "string",
+        name: "",
+        type: "string",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [],
+    name: "totalSupply",
+    outputs: [
+      {
+        internalType: "uint256",
+        name: "",
+        type: "uint256",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "uint256",
+        name: "index",
+        type: "uint256",
+      },
+    ],
+    name: "tokenByIndex",
+    outputs: [
+      {
+        internalType: "uint256",
+        name: "",
+        type: "uint256",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [],
+    name: "editionPrice",
+    outputs: [
+      {
+        internalType: "uint256",
+        name: "",
+        type: "uint256",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "uint256",
+        name: "originalId",
+        type: "uint256",
+      },
+    ],
+    name: "editionsMinted",
+    outputs: [
+      {
+        internalType: "uint256",
+        name: "",
+        type: "uint256",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "uint256",
+        name: "originalId",
+        type: "uint256",
+      },
+    ],
+    name: "mintEdition",
+    outputs: [],
+    stateMutability: "payable",
     type: "function",
   },
 ];
@@ -306,5 +535,140 @@ export async function isContractReady(): Promise<boolean> {
   } catch (error) {
     console.error("Error checking contract readiness:", error);
     return false;
+  }
+}
+
+// Function to mint an edition of an original NFT
+export async function mintEdition(
+  originalId: number,
+  signer: ethers.Signer,
+  chainId: number = 84532 // Default to Base Sepolia
+) {
+  try {
+    // Determine which contract to use based on chainId
+    let contractAddress: string;
+    let contractABI: any;
+
+    if (chainId === 534351) {
+      // Scroll Sepolia
+      contractAddress = SCROLLIFY_EDITIONS_ADDRESS;
+      contractABI = ScrollifyEditionsABI;
+      console.log("Minting edition on Scroll Sepolia");
+    } else {
+      // Default to Base Sepolia
+      contractAddress = EDITIONS_ADDRESS;
+      contractABI = HigherBaseEditionsABI;
+      console.log("Minting edition on Base Sepolia");
+    }
+
+    // Verify the connected network matches the expected chainId
+    const network = await signer.provider?.getNetwork();
+    const connectedChainId = network?.chainId
+      ? Number(network.chainId)
+      : undefined;
+
+    if (connectedChainId !== undefined && connectedChainId !== chainId) {
+      console.error(
+        `Network mismatch: Connected to ${connectedChainId}, but trying to mint on ${chainId}`
+      );
+      return {
+        success: false,
+        error: `Please switch to ${
+          chainId === 534351 ? "Scroll" : "Base"
+        } Sepolia network (Chain ID: ${chainId})`,
+      };
+    }
+
+    // Create a contract instance with the signer
+    const contract = new ethers.Contract(contractAddress, contractABI, signer);
+
+    // Get the edition price
+    let editionPrice;
+    try {
+      editionPrice = await contract.editionPrice();
+      console.log(`Edition price: ${ethers.formatEther(editionPrice)} ETH`);
+    } catch (error) {
+      console.error("Error fetching edition price:", error);
+      return {
+        success: false,
+        error:
+          "Could not get edition price. Please make sure you're connected to the correct network.",
+      };
+    }
+
+    // Get the number of editions minted for this original
+    let editionsMinted;
+    try {
+      editionsMinted = await contract.editionsMinted(originalId);
+      console.log(
+        `Editions minted for original #${originalId}: ${editionsMinted}`
+      );
+    } catch (error) {
+      console.error("Error fetching editions minted:", error);
+      return {
+        success: false,
+        error:
+          "Could not get editions minted. Please make sure you're connected to the correct network.",
+      };
+    }
+
+    // Mint the edition
+    const tx = await contract.mintEdition(originalId, {
+      value: editionPrice,
+    });
+
+    console.log("Minting transaction sent:", tx.hash);
+
+    // Wait for the transaction to be mined
+    const receipt = await tx.wait();
+    console.log("Minting transaction confirmed:", receipt);
+
+    // Return the result
+    return {
+      success: true,
+      transactionHash: tx.hash,
+      originalTokenId: originalId,
+      chainId: chainId,
+    };
+  } catch (error: any) {
+    console.error("Error minting edition:", error);
+
+    // Check for specific error types
+    const errorMessage = error?.message || String(error);
+
+    // User rejected transaction
+    if (
+      errorMessage.includes("user rejected") ||
+      errorMessage.includes("User denied") ||
+      errorMessage.includes("User rejected")
+    ) {
+      return {
+        success: false,
+        error: "Transaction was rejected by user",
+      };
+    }
+
+    // Wrong network errors
+    if (errorMessage.includes("could not decode result data")) {
+      return {
+        success: false,
+        error: `Please make sure you're connected to ${
+          chainId === 534351 ? "Scroll" : "Base"
+        } Sepolia network`,
+      };
+    }
+
+    // Insufficient funds
+    if (errorMessage.includes("insufficient funds")) {
+      return {
+        success: false,
+        error: "Insufficient funds for gas and mint price",
+      };
+    }
+
+    return {
+      success: false,
+      error: errorMessage,
+    };
   }
 }

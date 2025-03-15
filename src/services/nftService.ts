@@ -1,8 +1,14 @@
 /**
  * Service for fetching NFT data from Grove or other decentralized storage
  */
-import { createPublicClient, http, getContract } from "viem";
-import { baseSepolia } from "@/config/wallet-config";
+import {
+  createPublicClient,
+  http,
+  getContract,
+  PublicClient,
+  Chain,
+} from "viem";
+import { baseSepolia, scrollSepolia } from "@/config/wallet-config";
 import { COLLECTION_ADDRESS } from "@/config/nft-config";
 import { NFTType, NFTMetadata, OriginalNFT } from "@/types/nft-types";
 
@@ -17,6 +23,116 @@ const HigherBaseOriginalsABI = [
       },
     ],
     name: "tokenURI",
+    outputs: [
+      {
+        internalType: "string",
+        name: "",
+        type: "string",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [],
+    name: "totalSupply",
+    outputs: [
+      {
+        internalType: "uint256",
+        name: "",
+        type: "uint256",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "uint256",
+        name: "index",
+        type: "uint256",
+      },
+    ],
+    name: "tokenByIndex",
+    outputs: [
+      {
+        internalType: "uint256",
+        name: "",
+        type: "uint256",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+];
+
+// ABI for the ScrollifyOriginals contract
+const ScrollifyOriginalsABI = [
+  {
+    inputs: [
+      {
+        internalType: "uint256",
+        name: "tokenId",
+        type: "uint256",
+      },
+    ],
+    name: "tokenURI",
+    outputs: [
+      {
+        internalType: "string",
+        name: "",
+        type: "string",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [],
+    name: "totalSupply",
+    outputs: [
+      {
+        internalType: "uint256",
+        name: "",
+        type: "uint256",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "uint256",
+        name: "index",
+        type: "uint256",
+      },
+    ],
+    name: "tokenByIndex",
+    outputs: [
+      {
+        internalType: "uint256",
+        name: "",
+        type: "uint256",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+];
+
+// ABI for the ScrollifyEditions contract
+const ScrollifyEditionsABI = [
+  {
+    inputs: [
+      {
+        internalType: "uint256",
+        name: "tokenId",
+        type: "uint256",
+      },
+    ],
+    name: "uri",
     outputs: [
       {
         internalType: "string",
@@ -320,9 +436,13 @@ export function getBestImageUrl(metadata: NFTMetadata): string {
 export async function getOriginalById(id: number): Promise<OriginalNFT> {
   try {
     // Create a contract instance
-    const contract = getContractInstance();
+    const contract = getContract({
+      address: COLLECTION_ADDRESS as `0x${string}`,
+      abi: HigherBaseOriginalsABI,
+      client: publicClient,
+    });
 
-    // Get the token URI
+    // Get token URI
     const tokenURI = await contract.read.tokenURI([BigInt(id)]);
 
     // Fetch metadata from IPFS
@@ -359,10 +479,12 @@ export async function getOriginalById(id: number): Promise<OriginalNFT> {
   }
 }
 
-// This function fetches NFTs from the contract and Grove storage
+// Modify the fetchNFTsFromGrove function to support different contract types and chains
+
 export async function fetchNFTsFromGrove(
   contractAddress: string = COLLECTION_ADDRESS,
-  chainId: number = 84532 // Base Sepolia by default
+  chainId: number = 84532, // Base Sepolia by default
+  contractType: "ERC721" | "ERC1155" = "ERC721"
 ): Promise<NFTMetadata[]> {
   try {
     // Check cache first
@@ -372,11 +494,46 @@ export async function fetchNFTsFromGrove(
       return nftMetadataCache.get(cacheKey)!;
     }
 
+    // Create a client for the specified chain
+    let chainClient: PublicClient;
+    if (chainId === 84532) {
+      // Base Sepolia
+      chainClient = createPublicClient({
+        chain: baseSepolia,
+        transport: http(baseSepolia.rpcUrls.default.http[0]),
+      });
+      console.log("Using Base Sepolia client");
+    } else if (chainId === 534351) {
+      // Scroll Sepolia
+      chainClient = createPublicClient({
+        chain: scrollSepolia,
+        transport: http(scrollSepolia.rpcUrls.default.http[0]),
+      });
+      console.log("Using Scroll Sepolia client");
+    } else {
+      // Fallback to Base Sepolia for unsupported chains
+      console.warn(
+        `Unsupported chain ID ${chainId}, using Base Sepolia client as fallback`
+      );
+      chainClient = createPublicClient({
+        chain: baseSepolia,
+        transport: http(baseSepolia.rpcUrls.default.http[0]),
+      });
+    }
+
+    // Choose the appropriate ABI based on contract type
+    const contractAbi =
+      contractType === "ERC721"
+        ? contractAddress.toLowerCase() === COLLECTION_ADDRESS.toLowerCase()
+          ? HigherBaseOriginalsABI
+          : ScrollifyOriginalsABI
+        : ScrollifyEditionsABI;
+
     // Create a contract instance
     const contract = getContract({
       address: contractAddress as `0x${string}`,
-      abi: HigherBaseOriginalsABI,
-      client: publicClient,
+      abi: contractAbi,
+      client: chainClient,
     });
 
     // Get total supply
@@ -403,8 +560,12 @@ export async function fetchNFTsFromGrove(
           BigInt(i),
         ])) as bigint;
 
-        // Get token URI
-        const tokenURI = await contract.read.tokenURI([tokenIdBigInt]);
+        // Get token URI - different method name for ERC1155
+        const tokenURI =
+          contractType === "ERC721"
+            ? await contract.read.tokenURI([tokenIdBigInt])
+            : await contract.read.uri([tokenIdBigInt]);
+
         console.log(`Token URI for ID ${tokenIdBigInt}: ${tokenURI}`);
 
         // Fetch metadata from IPFS
@@ -425,18 +586,26 @@ export async function fetchNFTsFromGrove(
           }
         }
 
+        // Determine NFT type based on contract type
+        const nftType =
+          contractType === "ERC721" ? NFTType.ORIGINAL : NFTType.EDITION;
+
         // Use local images for faster loading but store Grove URL for later
         nfts.push({
           id: tokenIdBigInt.toString(),
           name:
             (metadata.name as string) ||
-            `Higher Original #${tokenIdBigInt.toString()}`,
+            `${chainId === 534351 ? "Scrollify" : "Higher"} ${
+              nftType === NFTType.ORIGINAL ? "Original" : "Edition"
+            } #${tokenIdBigInt.toString()}`,
           description:
             (metadata.description as string) ||
-            "A Higher Original NFT from the collection",
+            `A ${chainId === 534351 ? "Scrollify" : "Higher"} ${
+              nftType === NFTType.ORIGINAL ? "Original" : "Edition"
+            } NFT from the collection`,
           image: imageUrl, // Use local image for faster loading
           tokenId: Number(tokenIdBigInt),
-          type: NFTType.ORIGINAL,
+          type: nftType,
           originalId: Number(tokenIdBigInt),
           groveUrl, // Store the Grove hash for later use
           attributes: (metadata.attributes as Array<{
@@ -445,7 +614,9 @@ export async function fetchNFTsFromGrove(
           }>) || [
             {
               trait_type: "Type",
-              value: "Higher Original",
+              value: `${chainId === 534351 ? "Scrollify" : "Higher"} ${
+                nftType === NFTType.ORIGINAL ? "Original" : "Edition"
+              }`,
             },
           ],
         });
@@ -454,71 +625,13 @@ export async function fetchNFTsFromGrove(
       }
     }
 
-    // If we couldn't fetch any NFTs, use mock data
-    if (nfts.length === 0) {
-      console.warn("Falling back to mock NFT data");
-
-      // Example Grove hash from the provided URL
-      const groveHash =
-        "a3c83e726d821d6f6714182731bb50eb00ea6f79b9e5508b3d645035e27af7f7";
-
-      // Create mock data with Grove URLs
-      const mockNfts = Array(16)
-        .fill(0)
-        .map((_, index) => ({
-          id: `${index + 1}`,
-          name: `Higher Original #${index + 1}`,
-          description: "A Higher Original NFT from the collection",
-          image: `/image-${(index % 16) + 1}.jpg`, // Use local images for faster loading
-          tokenId: index + 1,
-          type: NFTType.ORIGINAL,
-          originalId: index + 1,
-          groveUrl: groveHash, // Store the Grove hash for later use
-          attributes: [
-            {
-              trait_type: "Type",
-              value: "Higher Original",
-            },
-          ],
-        }));
-
-      // Cache the results
-      nftMetadataCache.set(cacheKey, mockNfts);
-
-      return mockNfts;
-    }
-
     // Cache the results
     nftMetadataCache.set(cacheKey, nfts);
 
     return nfts;
   } catch (error) {
-    console.error("Error fetching NFTs:", error);
-
-    // Fallback to mock data if there's an error
-    const groveHash =
-      "a3c83e726d821d6f6714182731bb50eb00ea6f79b9e5508b3d645035e27af7f7";
-
-    const mockNfts = Array(16)
-      .fill(0)
-      .map((_, index) => ({
-        id: `${index + 1}`,
-        name: `Higher Original #${index + 1}`,
-        description: "A Higher Original NFT from the collection",
-        image: `/image-${(index % 16) + 1}.jpg`, // Use local images for faster loading
-        tokenId: index + 1,
-        type: NFTType.ORIGINAL,
-        originalId: index + 1,
-        groveUrl: groveHash, // Store the Grove hash for later use
-        attributes: [
-          {
-            trait_type: "Type",
-            value: "Higher Original",
-          },
-        ],
-      }));
-
-    return mockNfts;
+    console.error("Error fetching NFTs from Grove:", error);
+    return [];
   }
 }
 

@@ -68,3 +68,38 @@ export const baseSepolia = {
   },
   testnet: true,
 } as const satisfies Chain;
+
+export const scrollSepolia = {
+  id: 534351,
+  name: "Scroll Sepolia",
+  nativeCurrency: {
+    decimals: 18,
+    name: "Ether",
+    symbol: "ETH",
+  },
+  rpcUrls: {
+    default: {
+      http: [
+        `https://scroll-sepolia.g.alchemy.com/v2/Tx9luktS3qyIwEKVtjnQrpq8t3MNEV-B`,
+      ],
+    },
+    public: {
+      http: [
+        `https://scroll-sepolia.g.alchemy.com/v2/Tx9luktS3qyIwEKVtjnQrpq8t3MNEV-B`,
+      ],
+    },
+  },
+  blockExplorers: {
+    default: {
+      name: "Scrollscan",
+      url: "https://sepolia.scrollscan.com",
+    },
+  },
+  contracts: {
+    multicall3: {
+      address: "0xca11bde05977b3631167028862be2a173976ca11",
+      blockCreated: 8025825,
+    },
+  },
+  testnet: true,
+} as const satisfies Chain;

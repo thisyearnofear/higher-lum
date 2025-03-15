@@ -11,7 +11,7 @@ interface ImageRingConfig {
   yPosition: number;
   depthOffset: number;
   isOdd?: boolean;
-  onDoubleClick?: (imageIndex: number) => void;
+  onDoubleClick?: (imageIndex: number, nftId?: string) => void;
   nftMetadata?: NFTMetadata[]; // Optional NFT metadata for on-chain mode
   darkMode?: boolean; // For on-chain mode arrows
 }
@@ -24,7 +24,7 @@ export class ImageRing extends Freezable {
   private isOdd: boolean = false;
   private lastClickTime: number = 0;
   private readonly DOUBLE_CLICK_DELAY = 300; // ms
-  private readonly onDoubleClick?: (imageIndex: number) => void;
+  private readonly onDoubleClick?: (imageIndex: number, nftId?: string) => void;
   private isNftMode: boolean = false;
   private nftMetadata?: NFTMetadata[];
   private darkMode: boolean = false;
@@ -45,9 +45,16 @@ export class ImageRing extends Freezable {
     this.nftMetadata = nftMetadata;
     this.darkMode = darkMode;
 
+    console.log(
+      `ImageRing constructor: isNftMode=${this.isNftMode}, darkMode=${
+        this.darkMode
+      }, nftMetadata length=${nftMetadata?.length || 0}`
+    );
+
     // Create images
     if (this.isNftMode && nftMetadata) {
       // Use NFT metadata for images
+      console.log("Creating NFT image planes");
       this.images = nftMetadata.map(
         (nft, index) =>
           new ImagePlane({
@@ -62,6 +69,7 @@ export class ImageRing extends Freezable {
       );
     } else {
       // Use local images
+      console.log("Creating local image planes");
       this.images = imagePaths.map(
         (imagePath, index) =>
           new ImagePlane({
@@ -178,14 +186,23 @@ export class ImageRing extends Freezable {
 
     if (timeDiff < this.DOUBLE_CLICK_DELAY) {
       // Double click detected
-      // First check if the mesh itself is an NFT
-      if (mesh.userData && mesh.userData.isNFT) {
+      console.log("Double click detected, mesh userData:", mesh.userData);
+
+      // First check if the mesh itself is an NFT (check both uppercase and lowercase)
+      const isNft =
+        mesh.userData && (mesh.userData.isNFT || mesh.userData.isNft);
+      if (isNft && mesh.userData.nftId) {
         const imageIndex = this.images.findIndex(
           (plane) => plane.getMesh().userData.nftId === mesh.userData.nftId
         );
 
+        console.log(
+          `Double-clicked NFT mesh with ID: ${mesh.userData.nftId}, found at index: ${imageIndex}`
+        );
+
         if (imageIndex !== -1 && this.onDoubleClick) {
-          this.onDoubleClick(imageIndex);
+          // Pass both the index and the NFT ID to the callback
+          this.onDoubleClick(imageIndex, mesh.userData.nftId);
           this.lastClickTime = 0; // Reset to prevent triple-click
           return;
         }
@@ -200,8 +217,22 @@ export class ImageRing extends Freezable {
 
       if (imagePlane) {
         const imageIndex = this.images.indexOf(imagePlane);
+        const planeMesh = imagePlane.getMesh();
+        // Check both uppercase and lowercase
+        const isNft =
+          planeMesh.userData &&
+          (planeMesh.userData.isNFT || planeMesh.userData.isNft);
+        const nftId = isNft ? planeMesh.userData.nftId : undefined;
+
+        console.log(
+          `Double-clicked image plane at index: ${imageIndex}, NFT ID: ${
+            nftId || "none"
+          }`
+        );
+
         if (this.onDoubleClick) {
-          this.onDoubleClick(imageIndex);
+          // Pass both the index and the NFT ID (if available) to the callback
+          this.onDoubleClick(imageIndex, nftId);
         }
       }
     }

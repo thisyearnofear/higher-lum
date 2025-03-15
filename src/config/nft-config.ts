@@ -4,6 +4,12 @@
 
 import { NFTType, NFTMetadata } from "@/types/nft-types";
 
+// Scroll Sepolia contract addresses
+export const SCROLLIFY_ORIGINALS_ADDRESS =
+  "0xf230170c3afd6bea32ab0d7747c04a831bf24968"; // Deployed on Scroll Sepolia
+export const SCROLLIFY_EDITIONS_ADDRESS =
+  "0x91a14d576A83414A06D29C79173fc377Fe44edB0"; // Deployed on Scroll Sepolia
+
 // Collection address
 export const COLLECTION_ADDRESS = "0xf83BEE9560F7DBf5b103e8449d7869AF1E5EBD80"; // Higher Base Originals on Base Sepolia
 

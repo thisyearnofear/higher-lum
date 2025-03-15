@@ -9,6 +9,7 @@ import { getBestImageUrl } from "@/services/nftService";
 import { getOriginalById } from "@/services/contract";
 import type { OriginalNFT } from "@/types/nft-types";
 import type { NFTMetadata } from "@/types/nft-types";
+import { EditionMinter } from "./EditionMinter";
 
 interface NFTModalProps {
   imageIndex: number;
@@ -16,6 +17,7 @@ interface NFTModalProps {
   onClose: () => void;
   isOnChainMode?: boolean;
   onChainNFTs?: NFTMetadata[];
+  selectedNFTId?: string;
 }
 
 export function NFTModal({
@@ -24,6 +26,7 @@ export function NFTModal({
   onClose,
   isOnChainMode = false,
   onChainNFTs = [],
+  selectedNFTId,
 }: NFTModalProps) {
   const [mounted, setMounted] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
@@ -43,11 +46,14 @@ export function NFTModal({
     if (isOpen) {
       setIsClosing(false);
       document.body.style.overflow = "hidden";
+      console.log(
+        `NFTModal opened: isOnChainMode=${isOnChainMode}, selectedNFTId=${selectedNFTId}, imageIndex=${imageIndex}`
+      );
     }
     return () => {
       document.body.style.overflow = "unset";
     };
-  }, [isOpen]);
+  }, [isOpen, isOnChainMode, selectedNFTId, imageIndex]);
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -79,7 +85,16 @@ export function NFTModal({
       }, 5000);
 
       try {
-        const nft = onChainNFTs[imageIndex];
+        let nft;
+
+        if (selectedNFTId) {
+          // If we have a specific NFT ID, find that NFT
+          nft = onChainNFTs.find((n) => n.id === selectedNFTId);
+        } else {
+          // Otherwise use the index
+          nft = onChainNFTs[imageIndex];
+        }
+
         if (nft && nft.originalId) {
           const data = await getOriginalById(nft.originalId);
           clearTimeout(fetchTimeout);
@@ -97,18 +112,33 @@ export function NFTModal({
     if (isOpen) {
       fetchOriginalData();
     }
-  }, [isOpen, imageIndex, isOnChainMode, onChainNFTs]);
+  }, [isOpen, imageIndex, isOnChainMode, onChainNFTs, selectedNFTId]);
 
   if (!mounted || (!isOpen && !isClosing)) return null;
 
   // Get the appropriate metadata based on mode
   let metadata;
   if (isOnChainMode && onChainNFTs.length > 0) {
-    // Handle the case where imageIndex might be out of bounds
-    const adjustedIndex = imageIndex % onChainNFTs.length;
-    metadata = onChainNFTs[adjustedIndex];
+    console.log(
+      `NFTModal: isOnChainMode=${isOnChainMode}, onChainNFTs length=${onChainNFTs.length}, selectedNFTId=${selectedNFTId}, imageIndex=${imageIndex}`
+    );
+
+    if (selectedNFTId) {
+      // If we have a specific NFT ID, find that NFT
+      metadata = onChainNFTs.find((nft) => nft.id === selectedNFTId);
+      console.log(`Looking for NFT with ID ${selectedNFTId}, found:`, metadata);
+    }
+
+    // If no NFT found by ID or no ID provided, fall back to index
+    if (!metadata) {
+      // Handle the case where imageIndex might be out of bounds
+      const adjustedIndex = imageIndex % onChainNFTs.length;
+      metadata = onChainNFTs[adjustedIndex];
+      console.log(`Using NFT at index ${adjustedIndex}:`, metadata);
+    }
   } else {
     metadata = NFT_METADATA[imageIndex + 1];
+    console.log(`Using hardcoded NFT at index ${imageIndex + 1}:`, metadata);
   }
 
   if (!metadata) {
@@ -134,6 +164,22 @@ export function NFTModal({
       : metadata.image;
 
   console.log(`Displaying NFT image: ${imageUrl}`);
+
+  // Add a function to determine the chainId based on the NFT's origin
+  const getChainIdForNFT = (nftId?: string): number => {
+    if (!nftId || !isOnChainMode) return 84532; // Default to Base Sepolia
+
+    // Find the NFT in the onChainNFTs array
+    const nft = onChainNFTs.find((n) => n.id === nftId);
+    if (!nft) return 84532; // Default to Base Sepolia
+
+    // Check if the NFT name contains "Scrollify" to determine if it's from Scroll Sepolia
+    if (nft.name && nft.name.includes("Scrollify")) {
+      return 534351; // Scroll Sepolia
+    }
+
+    return 84532; // Default to Base Sepolia
+  };
 
   return createPortal(
     <div
@@ -200,7 +246,7 @@ export function NFTModal({
                 {metadata.description}
               </p>
 
-              {isOriginal ? (
+              {isOnChainMode && isOriginal ? (
                 <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg mb-6">
                   <h3 className="text-lg font-semibold mb-2 text-gray-900 dark:text-white">
                     Original NFT
@@ -209,20 +255,29 @@ export function NFTModal({
                     This is an original NFT from the Higher collection.
                   </p>
                   {originalData && (
-                    <div className="text-sm text-left">
-                      <p className="mb-1">
-                        <span className="font-medium">Creator:</span>{" "}
-                        {originalData.creator}
-                      </p>
-                      <p className="mb-1">
-                        <span className="font-medium">Token ID:</span>{" "}
-                        {originalData.tokenId}
-                      </p>
-                      <p>
-                        <span className="font-medium">Editions:</span>{" "}
-                        {originalData.editionCount}
-                      </p>
-                    </div>
+                    <>
+                      <div className="text-sm text-left mb-4">
+                        <p className="mb-1">
+                          <span className="font-medium">Creator:</span>{" "}
+                          {originalData.creator}
+                        </p>
+                        <p className="mb-1">
+                          <span className="font-medium">Token ID:</span>{" "}
+                          {originalData.tokenId}
+                        </p>
+                        <p>
+                          <span className="font-medium">Editions:</span>{" "}
+                          {originalData.editionCount}
+                        </p>
+                      </div>
+
+                      <EditionMinter
+                        originalId={originalData.tokenId}
+                        editionCount={originalData.editionCount}
+                        price="0.01"
+                        chainId={getChainIdForNFT(selectedNFTId)}
+                      />
+                    </>
                   )}
                 </div>
               ) : (
