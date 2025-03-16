@@ -11,7 +11,7 @@ import {
   SCROLLIFY_ORIGINALS_ADDRESS,
 } from "@/config/nft-config";
 import { OriginalNFT } from "@/types/nft-types";
-import { ethers } from "ethers";
+import { ethers, FunctionFragment } from "ethers";
 
 // ABI for the HigherBaseOriginals contract (minimal version for what we need)
 const HigherBaseOriginalsABI = [
@@ -345,7 +345,6 @@ export const HigherBaseEditionsABI = [
 
 // ABI for the ScrollifyOriginals contract
 // This ABI is used for type checking and reference
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const ScrollifyOriginalsABI = [
   {
     inputs: [
@@ -535,24 +534,26 @@ const basePublicClient = createPublicClient({
 const scrollPublicClient = createPublicClient({
   chain: {
     id: 534351,
-    name: 'Scroll Sepolia',
-    network: 'scroll-sepolia',
+    name: "Scroll Sepolia",
+    network: "scroll-sepolia",
     nativeCurrency: {
       decimals: 18,
-      name: 'Ether',
-      symbol: 'ETH',
+      name: "Ether",
+      symbol: "ETH",
     },
     rpcUrls: {
-      default: { http: ['https://sepolia-rpc.scroll.io/'] },
-      public: { http: ['https://sepolia-rpc.scroll.io/'] },
+      default: { http: ["https://sepolia-rpc.scroll.io/"] },
+      public: { http: ["https://sepolia-rpc.scroll.io/"] },
     },
   },
-  transport: http('https://sepolia-rpc.scroll.io/'),
+  transport: http("https://sepolia-rpc.scroll.io/"),
 });
 
 // Helper function to create Base originals contract instance
 function getBaseOriginalsContractInstance() {
-  console.log(`Using Base originals contract at address: ${COLLECTION_ADDRESS}`);
+  console.log(
+    `Using Base originals contract at address: ${COLLECTION_ADDRESS}`
+  );
   return getContract({
     address: COLLECTION_ADDRESS as `0x${string}`,
     abi: HigherBaseOriginalsABI,
@@ -560,19 +561,11 @@ function getBaseOriginalsContractInstance() {
   });
 }
 
-// Helper function to create Base editions contract instance
-function getBaseEditionsContractInstance() {
-  console.log(`Using Base editions contract at address: ${EDITIONS_ADDRESS}`);
-  return getContract({
-    address: EDITIONS_ADDRESS as `0x${string}`,
-    abi: HigherBaseEditionsABI,
-    client: basePublicClient,
-  });
-}
-
 // Helper function to create Scroll originals contract instance
 function getScrollOriginalsContractInstance() {
-  console.log(`Using Scroll originals contract at address: ${SCROLLIFY_ORIGINALS_ADDRESS}`);
+  console.log(
+    `Using Scroll originals contract at address: ${SCROLLIFY_ORIGINALS_ADDRESS}`
+  );
   return getContract({
     address: SCROLLIFY_ORIGINALS_ADDRESS as `0x${string}`,
     abi: ScrollifyOriginalsABI,
@@ -580,24 +573,11 @@ function getScrollOriginalsContractInstance() {
   });
 }
 
-// Helper function to create Scroll editions contract instance
-function getScrollEditionsContractInstance() {
-  console.log(`Using Scroll editions contract at address: ${SCROLLIFY_EDITIONS_ADDRESS}`);
-  return getContract({
-    address: SCROLLIFY_EDITIONS_ADDRESS as `0x${string}`,
-    abi: ScrollifyEditionsABI,
-    client: scrollPublicClient,
-  });
-}
-
 // Helper function to get the appropriate originals contract instance
 function getOriginalsContractInstance(isScroll = false) {
-  return isScroll ? getScrollOriginalsContractInstance() : getBaseOriginalsContractInstance();
-}
-
-// Helper function to get the appropriate editions contract instance
-function getEditionsContractInstance(isScroll = false) {
-  return isScroll ? getScrollEditionsContractInstance() : getBaseEditionsContractInstance();
+  return isScroll
+    ? getScrollOriginalsContractInstance()
+    : getBaseOriginalsContractInstance();
 }
 
 // Helper function to fetch and parse IPFS metadata
@@ -726,7 +706,10 @@ export function getFullGroveUrl(hash: string): string {
 }
 
 // Function to get original NFT data by ID
-export async function getOriginalById(id: number, isScroll = false): Promise<OriginalNFT> {
+export async function getOriginalById(
+  id: number,
+  isScroll = false
+): Promise<OriginalNFT> {
   try {
     let tokenURI: string;
     let creator: string = "0x0000000000000000000000000000000000000000";
@@ -735,37 +718,43 @@ export async function getOriginalById(id: number, isScroll = false): Promise<Ori
     if (isScroll) {
       // For Scroll, use a different approach since the ABI might be different
       // Create a provider for Scroll Sepolia
-      const provider = new ethers.JsonRpcProvider("https://sepolia-rpc.scroll.io/");
-      
+      const scrollProvider = new ethers.JsonRpcProvider(
+        "https://sepolia-rpc.scroll.io/"
+      );
+
       // Create contract instance with minimal ABI that just has the functions we need
       const contract = new ethers.Contract(
         SCROLLIFY_ORIGINALS_ADDRESS,
         [
           {
-            inputs: [{ internalType: "uint256", name: "tokenId", type: "uint256" }],
+            inputs: [
+              { internalType: "uint256", name: "tokenId", type: "uint256" },
+            ],
             name: "tokenURI",
             outputs: [{ internalType: "string", name: "", type: "string" }],
             stateMutability: "view",
             type: "function",
           },
           {
-            inputs: [{ internalType: "uint256", name: "tokenId", type: "uint256" }],
+            inputs: [
+              { internalType: "uint256", name: "tokenId", type: "uint256" },
+            ],
             name: "ownerOf",
             outputs: [{ internalType: "address", name: "", type: "address" }],
             stateMutability: "view",
             type: "function",
-          }
+          },
         ],
-        provider
+        scrollProvider
       );
-      
+
       // Get the token URI
       tokenURI = await contract.tokenURI(id);
       console.log(`Token URI for Scroll ID ${id}:`, tokenURI);
-      
+
       // For Scroll, we might not have a creators function, so use a default value
       creator = "0x0000000000000000000000000000000000000000";
-      
+
       // For Scroll, we might not have overlay types, so use a default value
       overlayType = "none";
     } else {
@@ -783,21 +772,28 @@ export async function getOriginalById(id: number, isScroll = false): Promise<Ori
 
       // Get the overlay type string directly from the contract
       try {
-        overlayType = await contract.read.getTokenOverlayTypeString([BigInt(id)]) as string;
+        overlayType = (await contract.read.getTokenOverlayTypeString([
+          BigInt(id),
+        ])) as string;
         console.log(`Overlay type string for ID ${id}:`, overlayType);
       } catch (error) {
         console.warn(`Error getting overlay type string for ID ${id}:`, error);
-        
+
         // Fallback to manual conversion if the function call fails
         try {
-          const overlayTypeEnum = Number(await contract.read.overlayTypes([BigInt(id)]));
+          const overlayTypeEnum = Number(
+            await contract.read.overlayTypes([BigInt(id)])
+          );
           console.log(`Overlay type enum for ID ${id}:`, overlayTypeEnum);
-          
+
           if (overlayTypeEnum === 0) overlayType = "higher";
           else if (overlayTypeEnum === 1) overlayType = "base";
           else if (overlayTypeEnum === 2) overlayType = "dickbuttify";
         } catch (enumError) {
-          console.warn(`Error getting overlay type enum for ID ${id}:`, enumError);
+          console.warn(
+            `Error getting overlay type enum for ID ${id}:`,
+            enumError
+          );
         }
       }
     }
@@ -901,8 +897,10 @@ export async function hasUserMintedEdition(
   try {
     if (isScroll) {
       // For Scroll, use a direct approach with ethers.js
-      const provider = new ethers.JsonRpcProvider("https://sepolia-rpc.scroll.io/");
-      
+      const scrollProvider = new ethers.JsonRpcProvider(
+        "https://sepolia-rpc.scroll.io/"
+      );
+
       // Create contract instance with minimal ABI
       const contract = new ethers.Contract(
         SCROLLIFY_EDITIONS_ADDRESS,
@@ -910,48 +908,79 @@ export async function hasUserMintedEdition(
           {
             inputs: [
               { internalType: "address", name: "user", type: "address" },
-              { internalType: "uint256", name: "originalId", type: "uint256" }
+              { internalType: "uint256", name: "originalId", type: "uint256" },
             ],
             name: "hasMinted",
             outputs: [{ internalType: "bool", name: "", type: "bool" }],
             stateMutability: "view",
             type: "function",
-          }
+          },
         ],
-        provider
+        scrollProvider
       );
-      
+
       try {
         // Try to call the hasMinted function directly
-        console.log(`Checking if user ${userAddress} has minted Scroll original ${originalId}`);
+        console.log(
+          `Checking if user ${userAddress} has minted Scroll original ${originalId}`
+        );
         const hasMinted = await contract.hasMinted(userAddress, originalId);
-        console.log(`User ${userAddress} has minted Scroll original ${originalId}: ${hasMinted}`);
-        
+        console.log(
+          `User ${userAddress} has minted Scroll original ${originalId}: ${hasMinted}`
+        );
+
         return hasMinted;
       } catch (error) {
-        console.warn(`Error checking if user has minted Scroll original ${originalId}:`, error);
-        
-        // If the function call fails, assume they haven't minted to allow them to try
-        console.log(`Assuming user ${userAddress} has not minted Scroll original ${originalId} due to error`);
+        console.warn(
+          `Error checking if user has minted Scroll original ${originalId}:`,
+          error
+        );
         return false;
       }
     } else {
-      // For Base, use the existing approach
-      // Get the contract instance
-      const contract = await getEditionsContract(isScroll);
-      
-      // Call the hasUserMintedEdition function on the contract
-      console.log(`Checking if user ${userAddress} has minted Base original ${originalId}`);
-      const hasMinted = await contract.hasUserMintedEdition(userAddress, originalId);
-      console.log(`User ${userAddress} has minted Base original ${originalId}: ${hasMinted}`);
-      
-      return hasMinted;
+      // For Base, use the existing approach with better error handling
+      try {
+        // Get the contract instance
+        const contract = await getEditionsContract(isScroll);
+
+        // Call the hasUserMintedEdition function on the contract
+        console.log(
+          `Checking if user ${userAddress} has minted Base original ${originalId}`
+        );
+
+        // Use a try-catch block specifically for the contract call
+        try {
+          const hasMinted = await contract.hasUserMintedEdition(
+            userAddress,
+            originalId
+          );
+          console.log(
+            `User ${userAddress} has minted Base original ${originalId}: ${hasMinted}`
+          );
+          return hasMinted;
+        } catch (callError: unknown) {
+          // If we get an empty response or decode error, assume they haven't minted
+          if (
+            callError &&
+            typeof callError === "object" &&
+            "message" in callError &&
+            typeof callError.message === "string" &&
+            callError.message.includes("could not decode result data")
+          ) {
+            console.log(
+              `Got empty response for hasUserMintedEdition, assuming not minted`
+            );
+            return false;
+          }
+          throw callError; // Re-throw other errors
+        }
+      } catch (error) {
+        console.error("Error checking if user has minted:", error);
+        return false;
+      }
     }
   } catch (error) {
-    console.error("Error checking if user has minted:", error);
-    
-    // If we can't check reliably, assume they haven't minted to allow them to try
-    console.log(`Assuming user ${userAddress} has not minted original ${originalId} due to error`);
+    console.error("Error in hasUserMintedEdition:", error);
     return false;
   }
 }
@@ -964,27 +993,34 @@ export async function getMaxEditionsForOriginal(
   try {
     if (isScroll) {
       // For Scroll, we always use 100 as the max editions
-      console.log(`Using hardcoded max editions for Scroll original ${originalId}: 100`);
+      console.log(
+        `Using hardcoded max editions for Scroll original ${originalId}: 100`
+      );
       return 100;
     } else {
       // For Base, use the existing approach
       // Get the contract instance
       const contract = await getEditionsContract(isScroll);
-      
+
       // First check if there's a specific max set for this original
       console.log(`Getting max editions for Base original ${originalId}`);
       try {
         const maxForOriginal = await contract.maxEditions(originalId);
-        
+
         // If specific max is set, return it
         if (maxForOriginal.toString() !== "0") {
-          console.log(`Max editions for Base original ${originalId}: ${maxForOriginal.toString()}`);
+          console.log(
+            `Max editions for Base original ${originalId}: ${maxForOriginal.toString()}`
+          );
           return Number(maxForOriginal.toString());
         }
       } catch (error) {
-        console.warn(`Error getting specific max editions for Base original ${originalId}:`, error);
+        console.warn(
+          `Error getting specific max editions for Base original ${originalId}:`,
+          error
+        );
       }
-      
+
       // If no specific max or error, get the default max editions
       try {
         const defaultMax = await contract.defaultMaxEditions();
@@ -992,16 +1028,18 @@ export async function getMaxEditionsForOriginal(
         return Number(defaultMax.toString());
       } catch (error) {
         console.warn(`Error getting default max editions for Base:`, error);
-        
+
         // If we can't get the default max, return a hardcoded value
         const hardcodedDefault = 100;
-        console.log(`Using hardcoded default max editions for Base: ${hardcodedDefault}`);
+        console.log(
+          `Using hardcoded default max editions for Base: ${hardcodedDefault}`
+        );
         return hardcodedDefault;
       }
     }
   } catch (error) {
     console.error("Error getting max editions:", error);
-    
+
     // If all else fails, return a hardcoded value
     return 100;
   }
@@ -1014,77 +1052,109 @@ export async function getCurrentEditionsMinted(
   try {
     if (isScroll) {
       // For Scroll, use a direct approach with ethers.js
-      const provider = new ethers.JsonRpcProvider("https://sepolia-rpc.scroll.io/");
-      
+      const scrollProvider = new ethers.JsonRpcProvider(
+        "https://sepolia-rpc.scroll.io/"
+      );
+
       // Create contract instance with minimal ABI
       const contract = new ethers.Contract(
         SCROLLIFY_EDITIONS_ADDRESS,
         [
           {
-            inputs: [{ internalType: "uint256", name: "originalId", type: "uint256" }],
+            inputs: [
+              { internalType: "uint256", name: "originalId", type: "uint256" },
+            ],
             name: "editionsMinted",
             outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
             stateMutability: "view",
             type: "function",
-          }
+          },
         ],
-        provider
+        scrollProvider
       );
-      
+
       // Call the editionsMinted function directly
       console.log(`Getting editions minted for Scroll original ${originalId}`);
       const count = await contract.editionsMinted(originalId);
       const editionsMinted = Number(count);
-      console.log(`Editions minted for Scroll original ${originalId}: ${editionsMinted}`);
-      
+      console.log(
+        `Editions minted for Scroll original ${originalId}: ${editionsMinted}`
+      );
+
       return editionsMinted;
     } else {
-      // For Base, use the existing approach
-      // Get the contract instance
-      const contract = await getEditionsContract(isScroll);
-      
-      // Call the editionsMinted function on the contract
-      console.log(`Getting editions minted for Base original ${originalId}`);
-      const editionsMinted = await contract.editionsMinted(originalId);
-      console.log(`Editions minted for Base original ${originalId}: ${editionsMinted}`);
-      
-      return Number(editionsMinted.toString());
+      // For Base, use the existing approach with better error handling
+      try {
+        // Get the contract instance
+        const contract = await getEditionsContract(isScroll);
+
+        // Call the editionsMinted function on the contract
+        console.log(`Getting editions minted for Base original ${originalId}`);
+
+        try {
+          const editionsMinted = await contract.editionsMinted(originalId);
+          console.log(
+            `Editions minted for Base original ${originalId}: ${editionsMinted}`
+          );
+          return Number(editionsMinted.toString());
+        } catch (callError: unknown) {
+          // If we get an empty response or decode error, assume 0 editions minted
+          if (
+            callError &&
+            typeof callError === "object" &&
+            "message" in callError &&
+            typeof callError.message === "string" &&
+            callError.message.includes("could not decode result data")
+          ) {
+            console.log(`Got empty response for editionsMinted, assuming 0`);
+            return 0;
+          }
+          throw callError; // Re-throw other errors
+        }
+      } catch (error) {
+        console.error("Error getting editions minted:", error);
+        return 0;
+      }
     }
   } catch (error) {
-    console.error("Error getting editions minted:", error);
-    
-    // If we can't check reliably, assume 0 editions have been minted
-    console.log(`Assuming 0 editions minted for original ${originalId} due to error`);
+    console.error("Error in getCurrentEditionsMinted:", error);
     return 0;
   }
 }
 
 // Function to check if an original NFT exists
-export async function originalExists(originalId: number, isScroll = false): Promise<boolean> {
+export async function originalExists(
+  originalId: number,
+  isScroll = false
+): Promise<boolean> {
   try {
     if (isScroll) {
       // For Scroll, use a different approach since the ABI might be different
       // Create a provider for Scroll Sepolia
-      const provider = new ethers.JsonRpcProvider("https://sepolia-rpc.scroll.io/");
-      
+      const scrollProvider = new ethers.JsonRpcProvider(
+        "https://sepolia-rpc.scroll.io/"
+      );
+
       // Create contract instance with minimal ABI that just has the function we need
       const contract = new ethers.Contract(
         SCROLLIFY_ORIGINALS_ADDRESS,
         [
           {
-            inputs: [{ internalType: "uint256", name: "tokenId", type: "uint256" }],
+            inputs: [
+              { internalType: "uint256", name: "tokenId", type: "uint256" },
+            ],
             name: "ownerOf",
             outputs: [{ internalType: "address", name: "", type: "address" }],
             stateMutability: "view",
             type: "function",
-          }
+          },
         ],
-        provider
+        scrollProvider
       );
-      
+
       // Try to get the owner of the original NFT
       await contract.ownerOf(originalId);
-      
+
       // If we get here, the original exists
       return true;
     } else {
@@ -1126,7 +1196,7 @@ export async function mintEdition(
 
     // Get the contract instance
     const contract = await getEditionsContract(isScrollEdition);
-    
+
     // Get the mint price
     let mintPrice;
     try {
@@ -1135,35 +1205,48 @@ export async function mintEdition(
     } catch (error) {
       console.error("Error getting mint price:", error);
       mintPrice = ethers.parseEther("0.01"); // Default to 0.01 ETH if we can't get the price
-      console.log(`Using default mint price: ${ethers.formatEther(mintPrice)} ETH`);
+      console.log(
+        `Using default mint price: ${ethers.formatEther(mintPrice)} ETH`
+      );
     }
 
     // Call the mintEdition function on the contract
-    console.log(`Calling mintEdition with originalId=${originalId} and value=${ethers.formatEther(mintPrice)} ETH`);
-    
+    console.log(
+      `Calling mintEdition with originalId=${originalId} and value=${ethers.formatEther(
+        mintPrice
+      )} ETH`
+    );
+
     // Log the contract address and ABI to verify
     console.log(`Contract address: ${contract.target}`);
     try {
       // Try to log the contract methods
-      const methods = contract.interface.fragments.map((f: any) => f.name || 'unknown').filter(Boolean);
-      console.log(`Contract ABI methods: ${methods.join(', ')}`);
+      const methods = contract.interface.fragments
+        .map((f) => (f instanceof FunctionFragment ? f.name : null))
+        .filter((name): name is string => name !== null);
+      console.log(`Contract ABI methods: ${methods.join(", ")}`);
     } catch (error) {
       console.warn("Could not log contract methods:", error);
     }
-    
+
     // Ensure we're passing the originalId as a number
     const originalIdNumber = Number(originalId);
     console.log(`Converted originalId to number: ${originalIdNumber}`);
-    
+
     // Check if the user has already minted this original
     try {
       // Get the signer's address directly
       const signer = await getProvider().getSigner();
       const userAddress = await signer.getAddress();
-      
+
       if (userAddress) {
-        const hasMinted = await contract.hasUserMintedEdition(userAddress, originalIdNumber);
-        console.log(`User ${userAddress} has minted original ${originalIdNumber}: ${hasMinted}`);
+        const hasMinted = await contract.hasUserMintedEdition(
+          userAddress,
+          originalIdNumber
+        );
+        console.log(
+          `User ${userAddress} has minted original ${originalIdNumber}: ${hasMinted}`
+        );
         if (hasMinted) {
           return {
             success: false,
@@ -1175,10 +1258,10 @@ export async function mintEdition(
       console.warn("Error checking if user has minted:", error);
       // Continue even if we can't check this
     }
-    
+
     // Try to use a more direct approach to call the contract
     console.log(`Using BigInt for originalId: ${BigInt(originalIdNumber)}`);
-    
+
     // Call the contract function with explicit parameters
     const tx = await contract.mintEdition(
       BigInt(originalIdNumber), // Convert to BigInt explicitly
@@ -1218,8 +1301,11 @@ export async function mintEdition(
         errorMessage = "Transaction was rejected by the user";
       } else if (error.message.includes("insufficient funds")) {
         errorMessage = "Insufficient funds in your wallet to mint this edition";
-      } else if (error.message.includes("network") || error.message.includes("chain")) {
-        errorMessage = isScrollEdition 
+      } else if (
+        error.message.includes("network") ||
+        error.message.includes("chain")
+      ) {
+        errorMessage = isScrollEdition
           ? "Please make sure you're connected to Scroll Sepolia network"
           : "Please make sure you're connected to Base Sepolia network";
       }
@@ -1232,25 +1318,11 @@ export async function mintEdition(
   }
 }
 
-// Type guard for user rejection errors
-function isUserRejectionError(error: unknown): boolean {
-  if (typeof error === "object" && error !== null) {
-    const err = error as { code?: number; message?: string };
-    return (
-      err.code === 4001 ||
-      (typeof err.message === "string" &&
-        (err.message.includes("user rejected") ||
-          err.message.includes("User denied")))
-    );
-  }
-  return false;
-}
-
 // Function to get available editions on Scroll
 export async function getAvailableScrollEditions(): Promise<number[]> {
   try {
     // Create a provider for Scroll Sepolia
-    const provider = new ethers.JsonRpcProvider(
+    const scrollProvider = new ethers.JsonRpcProvider(
       "https://sepolia-rpc.scroll.io/"
     );
 
@@ -1258,7 +1330,7 @@ export async function getAvailableScrollEditions(): Promise<number[]> {
     const contract = new ethers.Contract(
       SCROLLIFY_EDITIONS_ADDRESS,
       ScrollifyEditionsABI,
-      provider
+      scrollProvider
     );
 
     // With the new contract design, all original IDs are valid for minting
@@ -1294,12 +1366,20 @@ export async function getAvailableScrollEditions(): Promise<number[]> {
 export async function getEditionsContract(isScroll = false) {
   const provider = getProvider();
   const signer = await provider.getSigner();
-  
+
   if (isScroll) {
-    console.log(`Getting Scroll editions contract at address: ${SCROLLIFY_EDITIONS_ADDRESS}`);
-    return new ethers.Contract(SCROLLIFY_EDITIONS_ADDRESS, ScrollifyEditionsABI, signer);
+    console.log(
+      `Getting Scroll editions contract at address: ${SCROLLIFY_EDITIONS_ADDRESS}`
+    );
+    return new ethers.Contract(
+      SCROLLIFY_EDITIONS_ADDRESS,
+      ScrollifyEditionsABI,
+      signer
+    );
   } else {
-    console.log(`Getting Base editions contract at address: ${EDITIONS_ADDRESS}`);
+    console.log(
+      `Getting Base editions contract at address: ${EDITIONS_ADDRESS}`
+    );
     return new ethers.Contract(EDITIONS_ADDRESS, HigherBaseEditionsABI, signer);
   }
 }

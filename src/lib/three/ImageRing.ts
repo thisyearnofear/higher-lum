@@ -140,6 +140,8 @@ export class ImageRing extends Freezable {
           worldPoint: new THREE.Vector3(0, 0, depthOffset),
           isNft: true,
           nftId: nft.id,
+          // Flip horizontally if it's a Scroll NFT (chainId 534351 is Scroll Sepolia)
+          flipHorizontal: nft.chainId === 534351,
         });
 
         // Add additional metadata to the mesh userData

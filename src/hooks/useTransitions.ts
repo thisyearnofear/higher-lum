@@ -297,6 +297,7 @@ export function useTransitions({
       updateProgressIncremental,
       loadNFTsFromCache,
       saveNFTsToCache,
+      setTransitionLoadingProgress,
     ]
   );
 
@@ -446,6 +447,7 @@ export function useTransitions({
       updateProgressIncremental,
       loadNFTsFromCache,
       saveNFTsToCache,
+      setTransitionLoadingProgress,
     ]
   );
 
@@ -517,7 +519,7 @@ export function useTransitions({
 
       console.log("Image preloading complete");
     },
-    []
+    [setTransitionLoadingProgress]
   );
 
   // Function to transition back to off-chain mode
@@ -582,11 +584,16 @@ export function useTransitions({
       animateBackgroundColor();
     }
   }, [
-    updateProgressIncremental,
+    replaceAllRings,
     sceneRef,
     setIsOnChainMode,
     setIsOnChainScrollMode,
-    replaceAllRings,
+    setIsHigherLoading,
+    setTransitionLoadingProgress,
+    updateProgressIncremental,
+    transitionInProgressRef,
+    isOnChainModeRef,
+    isOnChainScrollModeRef,
   ]);
 
   // Function to transition to on-chain experience (Base NFTs)
@@ -937,7 +944,14 @@ export function useTransitions({
         await transitionToBase();
         break;
     }
-  }, [transitionToOnChain, transitionToScrollMode, transitionToBase]);
+  }, [
+    transitionToOnChain,
+    transitionToScrollMode,
+    transitionToBase,
+    isOnChainModeRef,
+    isOnChainScrollModeRef,
+    transitionInProgressRef,
+  ]);
 
   // Function to get current mode
   const getCurrentMode = useCallback(() => {

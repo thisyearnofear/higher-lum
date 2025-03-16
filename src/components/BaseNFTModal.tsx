@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
-import { COLLECTION_ADDRESS, EDITIONS_ADDRESS } from "@/config/nft-config";
+import { COLLECTION_ADDRESS } from "@/config/nft-config";
 import { NFTType } from "@/types/nft-types";
 import { getBestImageUrl } from "@/services/nftService";
 import {
@@ -14,9 +14,6 @@ import {
 import type { OriginalNFT } from "@/types/nft-types";
 import type { NFTMetadata } from "@/types/nft-types";
 import { EditionMinter } from "./EditionMinter";
-import { useAccount } from "wagmi";
-import { ethers } from "ethers";
-import { HigherBaseEditionsABI } from "@/services/contract";
 import { getMaxEditionsForOriginal } from "@/services/contract";
 
 interface BaseNFTModalProps {
@@ -42,7 +39,6 @@ export function BaseNFTModal({
   const [mintError, setMintError] = useState<string | null>(null);
   const [editionCount, setEditionCount] = useState<number>(0);
   const [isPollingEditions, setIsPollingEditions] = useState(false);
-  const { isConnected } = useAccount();
   const [maxEditions, setMaxEditions] = useState<number>(10); // Base has 10 max editions by default
   const [originalDoesExist, setOriginalDoesExist] = useState<boolean>(true);
 

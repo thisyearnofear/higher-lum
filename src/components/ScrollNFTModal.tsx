@@ -3,10 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
-import {
-  SCROLLIFY_ORIGINALS_ADDRESS,
-  SCROLLIFY_EDITIONS_ADDRESS,
-} from "@/config/nft-config";
+import { SCROLLIFY_ORIGINALS_ADDRESS } from "@/config/nft-config";
 import { NFTType } from "@/types/nft-types";
 import { getBestImageUrl } from "@/services/nftService";
 import {
@@ -17,9 +14,6 @@ import {
 import type { OriginalNFT } from "@/types/nft-types";
 import type { NFTMetadata } from "@/types/nft-types";
 import { EditionMinter } from "./EditionMinter";
-import { useAccount } from "wagmi";
-import { ethers } from "ethers";
-import { ScrollifyEditionsABI } from "@/services/contract";
 import { getMaxEditionsForOriginal } from "@/services/contract";
 
 interface ScrollNFTModalProps {
@@ -45,7 +39,6 @@ export function ScrollNFTModal({
   const [mintError, setMintError] = useState<string | null>(null);
   const [editionCount, setEditionCount] = useState<number>(0);
   const [isPollingEditions, setIsPollingEditions] = useState(false);
-  const { isConnected } = useAccount();
   const [maxEditions, setMaxEditions] = useState<number>(100); // Scroll has 100 max editions
   const [originalDoesExist, setOriginalDoesExist] = useState<boolean>(true);
 
@@ -133,20 +126,6 @@ export function ScrollNFTModal({
 
     try {
       setIsPollingEditions(true);
-
-      // Scroll Sepolia RPC
-      const rpcUrl = "https://sepolia-rpc.scroll.io/";
-      const contractAddress = SCROLLIFY_EDITIONS_ADDRESS;
-      const contractABI = ScrollifyEditionsABI;
-
-      console.log(`Polling edition count for NFT #${selectedNFT.id} on Scroll`);
-
-      const provider = new ethers.JsonRpcProvider(rpcUrl);
-      const contract = new ethers.Contract(
-        contractAddress,
-        contractABI,
-        provider
-      );
 
       // For original NFTs, we need to use the tokenId
       const idToQuery =

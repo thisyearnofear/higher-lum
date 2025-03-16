@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useCallback, useMemo } from "react";
 import * as THREE from "three";
 import { ImageRing } from "@/lib/three/ImageRing";
 import { MomentumDraggable } from "@/lib/three/MomentumDraggable";
@@ -14,9 +14,58 @@ export const useThreeScene = (canvas: HTMLCanvasElement) => {
   const lastScrollOffsetRef = useRef<number>(0);
   const currentRingIndexRef = useRef<number>(0);
 
-  const DEPTH_OFFSET = 16 * 3; // imagePaths.length * 3
-  const VERTICAL_OFFSET = 0.5;
-  const VISIBLE_RINGS = 100;
+  // Memoize constants
+  const constants = useMemo(
+    () => ({
+      DEPTH_OFFSET: 16 * 3, // imagePaths.length * 3
+      VERTICAL_OFFSET: 0.5,
+      VISIBLE_RINGS: 100,
+    }),
+    []
+  );
+
+  // Helper function to get intersecting object - moved outside useEffect and memoized
+  const getIntersectingObject = useCallback(
+    (event: MouseEvent | Touch) => {
+      if (!canvas || !cameraRef.current || !sceneRef.current) return null;
+
+      const rect = canvas.getBoundingClientRect();
+      const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      const vector = new THREE.Vector2(x, y);
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(vector, cameraRef.current);
+
+      const intersects = raycaster.intersectObjects(
+        sceneRef.current.children,
+        true
+      );
+
+      return intersects.length > 0 ? intersects[0].object : null;
+    },
+    [canvas]
+  );
+
+  // Create initial rings function
+  const createRing = useCallback(
+    (index: number): ImageRing => {
+      const imagePaths = Array(16)
+        .fill(0)
+        .map((_, i) => `/image-${i + 1}.jpg`);
+
+      const ring = new ImageRing({
+        angleOffset: 20 * index,
+        imagePaths,
+        yPosition: constants.VERTICAL_OFFSET * index,
+        depthOffset: constants.DEPTH_OFFSET,
+        isOdd: index % 2 === 0,
+      });
+      ring.getGroup().frustumCulled = true; // Enable frustum culling for rings
+      return ring;
+    },
+    [constants]
+  );
 
   useEffect(() => {
     if (!canvas) return;
@@ -58,26 +107,8 @@ export const useThreeScene = (canvas: HTMLCanvasElement) => {
     scene.add(boom);
     camera.position.set(0, 0, 0);
 
-    // Image paths (to be moved to configuration)
-    const imagePaths = Array(16)
-      .fill(0)
-      .map((_, index) => `/image-${index + 1}.jpg`);
-
-    // Create initial rings
-    function createRing(index: number): ImageRing {
-      const ring = new ImageRing({
-        angleOffset: 20 * index,
-        imagePaths,
-        yPosition: VERTICAL_OFFSET * index,
-        depthOffset: DEPTH_OFFSET,
-        isOdd: index % 2 === 0,
-      });
-      ring.getGroup().frustumCulled = true; // Enable frustum culling for rings
-      return ring;
-    }
-
     // Initialize first set of rings with optimized loading
-    const INITIAL_VISIBLE_RINGS = Math.min(VISIBLE_RINGS, 50); // Load fewer rings initially
+    const INITIAL_VISIBLE_RINGS = Math.min(constants.VISIBLE_RINGS, 50); // Load fewer rings initially
     for (let i = 0; i < INITIAL_VISIBLE_RINGS; i++) {
       const ring = createRing(i);
       ringsRef.current.set(i, ring);
@@ -85,9 +116,9 @@ export const useThreeScene = (canvas: HTMLCanvasElement) => {
     }
 
     // Gradually load remaining rings
-    if (VISIBLE_RINGS > INITIAL_VISIBLE_RINGS) {
+    if (constants.VISIBLE_RINGS > INITIAL_VISIBLE_RINGS) {
       setTimeout(() => {
-        for (let i = INITIAL_VISIBLE_RINGS; i < VISIBLE_RINGS; i++) {
+        for (let i = INITIAL_VISIBLE_RINGS; i < constants.VISIBLE_RINGS; i++) {
           const ring = createRing(i);
           ringsRef.current.set(i, ring);
           scene.add(ring.getGroup());
@@ -98,8 +129,8 @@ export const useThreeScene = (canvas: HTMLCanvasElement) => {
     // Create music player
     const musicPlayer = new MusicPlane({
       x: 0,
-      y: VISIBLE_RINGS * VERTICAL_OFFSET * 0.3,
-      z: DEPTH_OFFSET * 0.5,
+      y: constants.VISIBLE_RINGS * constants.VERTICAL_OFFSET * 0.3,
+      z: constants.DEPTH_OFFSET * 0.5,
     });
     musicPlayerRef.current = musicPlayer;
     scene.add(musicPlayer.getMesh());
@@ -131,7 +162,8 @@ export const useThreeScene = (canvas: HTMLCanvasElement) => {
       const dragYOffset = originalDragOffset.y / 500;
 
       boom.rotation.y = dragXOffset;
-      const cameraY = dragYOffset + (VISIBLE_RINGS * VERTICAL_OFFSET) / 2;
+      const cameraY =
+        dragYOffset + (constants.VISIBLE_RINGS * constants.VERTICAL_OFFSET) / 2;
       camera.position.y = cameraY;
 
       // Update rings based on camera position
@@ -155,7 +187,9 @@ export const useThreeScene = (canvas: HTMLCanvasElement) => {
       const visibleRings = Array.from(ringsRef.current.values()).filter(
         (ring) => {
           const distance = Math.abs(ring.getGroup().position.y - cameraY);
-          return distance < (VERTICAL_OFFSET * VISIBLE_RINGS) / 2;
+          return (
+            distance < (constants.VERTICAL_OFFSET * constants.VISIBLE_RINGS) / 2
+          );
         }
       );
 
@@ -209,30 +243,22 @@ export const useThreeScene = (canvas: HTMLCanvasElement) => {
 
     // Helper function to update rings
     function updateRings(cameraY: number) {
-      const baseIndex = Math.floor(cameraY / VERTICAL_OFFSET);
+      const baseIndex = Math.floor(cameraY / constants.VERTICAL_OFFSET);
 
       if (
         Math.abs(baseIndex - currentRingIndexRef.current) >
-        VISIBLE_RINGS / 4
+        constants.VISIBLE_RINGS / 4
       ) {
         const newRings = new Map<number, ImageRing>();
-        const startIndex = baseIndex - VISIBLE_RINGS / 2;
-        const endIndex = baseIndex + VISIBLE_RINGS / 2;
+        const startIndex = baseIndex - constants.VISIBLE_RINGS / 2;
+        const endIndex = baseIndex + constants.VISIBLE_RINGS / 2;
 
         for (let i = startIndex; i < endIndex; i++) {
           if (ringsRef.current.has(i)) {
             newRings.set(i, ringsRef.current.get(i)!);
             ringsRef.current.delete(i);
           } else {
-            const ring = new ImageRing({
-              angleOffset: 20 * i,
-              imagePaths: Array(16)
-                .fill(0)
-                .map((_, index) => `/image-${index + 1}.jpg`),
-              yPosition: VERTICAL_OFFSET * i,
-              depthOffset: DEPTH_OFFSET,
-              isOdd: i % 2 === 0,
-            });
+            const ring = createRing(i);
             newRings.set(i, ring);
             scene.add(ring.getGroup());
           }
@@ -265,23 +291,7 @@ export const useThreeScene = (canvas: HTMLCanvasElement) => {
 
       renderer.dispose();
     };
-  }, [canvas, DEPTH_OFFSET]);
+  }, [canvas, getIntersectingObject, constants, createRing]);
 
-  // Helper function to get intersecting object
-  function getIntersectingObject(event: MouseEvent | Touch) {
-    const rect = canvas.getBoundingClientRect();
-    const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-    const vector = new THREE.Vector2(x, y);
-    const raycaster = new THREE.Raycaster();
-    raycaster.setFromCamera(vector, cameraRef.current!);
-
-    const intersects = raycaster.intersectObjects(
-      sceneRef.current!.children,
-      true
-    );
-
-    return intersects.length > 0 ? intersects[0].object : null;
-  }
+  // Helper function to get intersecting object - removed from here
 };

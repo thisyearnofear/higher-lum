@@ -9,7 +9,6 @@ import {
   originalExists,
 } from "@/services/contract";
 import { useAccount, useWalletClient } from "wagmi";
-import { ethers } from "ethers";
 
 interface EditionMinterProps {
   originalId: number;
@@ -17,13 +16,6 @@ interface EditionMinterProps {
   price: string;
   maxEditions?: number;
   isScroll?: boolean;
-}
-
-// Define the expected result type from mintEdition
-interface MintResult {
-  success: boolean;
-  message: string;
-  txHash?: string;
 }
 
 export function EditionMinter({
@@ -40,7 +32,6 @@ export function EditionMinter({
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [networkError, setNetworkError] = useState<string | null>(null);
-  const [isSwitchingNetwork, setIsSwitchingNetwork] = useState(false);
   const [currentEditionCount, setCurrentEditionCount] = useState(editionCount);
   const { isConnected, address, chain } = useAccount();
   const { data: walletClient } = useWalletClient();
@@ -266,42 +257,6 @@ export function EditionMinter({
     return errorMessage;
   };
 
-  // Function to handle network switching
-  const handleSwitchNetwork = async () => {
-    // Prevent rapid repeated switch attempts
-    const now = Date.now();
-    if (now - lastNetworkSwitchTimeRef.current < 3000) {
-      console.log("Throttling network switch request");
-      return;
-    }
-    lastNetworkSwitchTimeRef.current = now;
-
-    if (!walletClient || networkSwitchAttemptedRef.current) {
-      return;
-    }
-
-    try {
-      setIsSwitchingNetwork(true);
-      networkSwitchAttemptedRef.current = true;
-
-      // Request network switch
-      await walletClient.switchChain({ id: chainId });
-
-      const networkName = isScroll ? "Scroll Sepolia" : "Base Sepolia";
-      console.log(`Successfully switched to ${networkName}`);
-      setNetworkError(null);
-    } catch (error) {
-      console.error("Error switching network:", error);
-      setError(getReadableErrorMessage(error));
-    } finally {
-      setIsSwitchingNetwork(false);
-      // Reset the network switch attempt flag after a delay
-      setTimeout(() => {
-        networkSwitchAttemptedRef.current = false;
-      }, 5000);
-    }
-  };
-
   // Function to handle minting
   const handleMint = async () => {
     if (!isConnected) {
@@ -368,6 +323,40 @@ export function EditionMinter({
       setError(getReadableErrorMessage(error));
     } finally {
       setIsMinting(false);
+    }
+  };
+
+  // Function to handle network switching
+  const handleSwitchNetwork = async () => {
+    // Prevent rapid repeated switch attempts
+    const now = Date.now();
+    if (now - lastNetworkSwitchTimeRef.current < 3000) {
+      console.log("Throttling network switch request");
+      return;
+    }
+    lastNetworkSwitchTimeRef.current = now;
+
+    if (!walletClient || networkSwitchAttemptedRef.current) {
+      return;
+    }
+
+    try {
+      networkSwitchAttemptedRef.current = true;
+
+      // Request network switch
+      await walletClient.switchChain({ id: chainId });
+
+      const networkName = isScroll ? "Scroll Sepolia" : "Base Sepolia";
+      console.log(`Successfully switched to ${networkName}`);
+      setNetworkError(null);
+    } catch (error) {
+      console.error("Error switching network:", error);
+      setError(getReadableErrorMessage(error));
+    } finally {
+      // Reset the network switch attempt flag after a delay
+      setTimeout(() => {
+        networkSwitchAttemptedRef.current = false;
+      }, 5000);
     }
   };
 

@@ -10,6 +10,7 @@ interface ImagePlaneConfig {
   worldPoint?: THREE.Vector3;
   isNft?: boolean;
   nftId?: string;
+  flipHorizontal?: boolean;
 }
 
 // Cache for loaded textures to improve performance and prevent reloading
@@ -27,7 +28,13 @@ export class ImagePlane extends Freezable {
 
   constructor(config: ImagePlaneConfig) {
     super();
-    const { imagePath, angle, isNft = false, nftId } = config;
+    const {
+      imagePath,
+      angle,
+      isNft = false,
+      nftId,
+      flipHorizontal = false,
+    } = config;
     this.isNft = isNft;
     this.nftId = nftId;
 
@@ -54,6 +61,11 @@ export class ImagePlane extends Freezable {
       angleWidth
     );
     geometry.rotateY(Math.PI / 1);
+
+    // If flipping horizontally, scale the geometry on the X axis
+    if (flipHorizontal) {
+      geometry.scale(-1, 1, 1);
+    }
 
     // Check cache first
     if (textureCache.has(imagePath)) {

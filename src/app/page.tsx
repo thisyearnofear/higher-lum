@@ -51,27 +51,21 @@ export default function Home() {
   // State for the refresh button
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Function to handle NFT selection
-  const handleNFTSelect = useCallback((imageIndex: number, nftId?: string) => {
-    // Get the current mode from the ref to ensure we're using the latest value
+  // Create a ref for the NFT select handler
+  const handleNFTSelectRef = useRef((imageIndex: number, nftId?: string) => {
+    // Default implementation
     const currentIsOnChainMode = isOnChainModeRef.current;
-
     console.log(
       `NFT selected: index=${imageIndex}, nftId=${
         nftId || "none"
-      }, isOnChainMode=${currentIsOnChainMode}, isOnChainMode (ref)=${
-        isOnChainModeRef.current
-      }`
+      }, isOnChainMode=${currentIsOnChainMode}`
     );
-
-    // Ensure the index is valid
     const adjustedIndex = imageIndex % 16;
-
     setSelectedNFT(adjustedIndex);
     setSelectedNFTId(nftId);
     setIsModalOpen(true);
     momentumPausedRef.current = true;
-  }, []);
+  });
 
   // Use the ring manager hook
   const {
@@ -89,10 +83,35 @@ export default function Home() {
     isOnChainScrollModeRef,
     nftMetadata,
     scrollNftMetadata,
-    handleNFTSelect,
+    handleNFTSelect: handleNFTSelectRef.current,
     sceneRef,
     cameraRef,
   });
+
+  // Update the NFT select handler
+  useEffect(() => {
+    handleNFTSelectRef.current = (imageIndex: number, nftId?: string) => {
+      const currentIsOnChainMode = isOnChainModeRef.current;
+      console.log(
+        `NFT selected: index=${imageIndex}, nftId=${
+          nftId || "none"
+        }, isOnChainMode=${currentIsOnChainMode}, isOnChainMode (ref)=${
+          isOnChainModeRef.current
+        }`
+      );
+      const adjustedIndex = imageIndex % 16;
+      setSelectedNFT(adjustedIndex);
+      setSelectedNFTId(nftId);
+      setIsModalOpen(true);
+      momentumPausedRef.current = true;
+    };
+  }, [
+    isOnChainModeRef,
+    momentumPausedRef,
+    setSelectedNFT,
+    setSelectedNFTId,
+    setIsModalOpen,
+  ]);
 
   // Use the transitions hook
   const {
@@ -362,84 +381,21 @@ export default function Home() {
     try {
       setIsRefreshing(true);
 
-      if (isOnChainMode && !isOnChainScrollMode) {
-        console.log("Manually refreshing Base NFTs");
+      // Refresh Base NFTs if in Base mode
+      if (isOnChainMode) {
+        await preloadBaseNFTs();
+      }
 
-        // Store the current count to check if we got new NFTs
-        const previousCount = nftMetadata.length;
-
-        // Force refresh the NFT data
-        await preloadBaseNFTs(true);
-
-        console.log(`After refreshing, Base NFTs count: ${nftMetadata.length}`);
-
-        // Only update rings if we have NFTs and either the count changed or this is the first load
-        if (
-          nftMetadata.length > 0 &&
-          (nftMetadata.length !== previousCount || previousCount === 0)
-        ) {
-          console.log(
-            `Found ${
-              nftMetadata.length - previousCount
-            } new Base NFTs, updating rings`
-          );
-
-          // Replace all rings with the new data
-          replaceAllRings();
-
-          // Force a render to ensure rings are visible
-          forceRender();
-        } else {
-          console.log("No new Base NFTs found, skipping ring update");
-        }
-      } else if (isOnChainScrollMode) {
-        console.log("Manually refreshing Scroll NFTs");
-
-        // Store the current count to check if we got new NFTs
-        const previousCount = scrollNftMetadata.length;
-
-        // Force refresh the NFT data
-        await preloadScrollNFTs(true);
-
-        console.log(
-          `After refreshing, Scroll NFTs count: ${scrollNftMetadata.length}`
-        );
-
-        // Only update rings if we have NFTs and either the count changed or this is the first load
-        if (
-          scrollNftMetadata.length > 0 &&
-          (scrollNftMetadata.length !== previousCount || previousCount === 0)
-        ) {
-          console.log(
-            `Found ${
-              scrollNftMetadata.length - previousCount
-            } new Scroll NFTs, updating rings`
-          );
-
-          // Replace all rings with the new data
-          replaceAllRings();
-
-          // Force a render to ensure rings are visible
-          forceRender();
-        } else {
-          console.log("No new Scroll NFTs found, skipping ring update");
-        }
+      // Refresh Scroll NFTs if in Scroll mode
+      if (isOnChainScrollMode) {
+        await preloadScrollNFTs();
       }
     } catch (error) {
       console.error("Error refreshing NFT data:", error);
     } finally {
       setIsRefreshing(false);
     }
-  }, [
-    isOnChainMode,
-    isOnChainScrollMode,
-    preloadBaseNFTs,
-    preloadScrollNFTs,
-    nftMetadata.length,
-    scrollNftMetadata.length,
-    replaceAllRings,
-    forceRender,
-  ]);
+  }, [isOnChainMode, isOnChainScrollMode, preloadBaseNFTs, preloadScrollNFTs]);
 
   // Set up automatic polling for NFT updates
   useEffect(() => {
