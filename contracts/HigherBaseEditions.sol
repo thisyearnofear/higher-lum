@@ -6,53 +6,245 @@ import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 
-contract HigherBaseOriginals is ERC721Enumerable, ERC721URIStorage, Ownable {
+// Interface for the HigherBaseOriginals contract
+interface IHigherBaseOriginals {
+    enum OverlayType { HIGHER, BASE, DICKBUTTIFY }
+    
+    function ownerOf(uint256 tokenId) external view returns (address);
+    function tokenURI(uint256 tokenId) external view returns (string memory);
+    function creators(uint256 tokenId) external view returns (address);
+    function overlayTypes(uint256 tokenId) external view returns (OverlayType);
+    function getTokenOverlayTypeString(uint256 tokenId) external view returns (string memory);
+}
+
+contract HigherBaseEditions is ERC721Enumerable, ERC721URIStorage, Ownable {
     using Counters for Counters.Counter;
     Counters.Counter private _tokenIds;
 
-    enum OverlayType { HIGHER, BASE, DICKBUTTIFY }
+    // Reference to the originals contract
+    IHigherBaseOriginals public originalsContract;
 
-    mapping(uint256 => address) public creators;
-    mapping(uint256 => OverlayType) public overlayTypes;
-    mapping(string => uint256) public groveUrlToTokenId;
+    // Mapping from edition token ID to original token ID
+    mapping(uint256 => uint256) public originalTokenId;
+    
+    // Mapping from original token ID to number of editions minted
+    mapping(uint256 => uint256) public editionsMinted;
+    
+    // Mapping from original token ID to max editions allowed
+    mapping(uint256 => uint256) public maxEditions;
+    
+    // Mapping to track which addresses have minted which originals
+    mapping(address => mapping(uint256 => bool)) public hasMinted;
+    
+    // Default max editions per original
+    uint256 public defaultMaxEditions = 100;
+    
+    // Edition price
+    uint256 public editionPrice = 0.01 ether;
+    
+    // Creator royalty percentage (in basis points, e.g., 1000 = 10%)
+    uint256 public creatorRoyaltyBps = 1000;
+    
+    // Platform fee percentage (in basis points)
+    uint256 public platformFeeBps = 500;
 
-    uint256 public constant MAX_ORIGINALS = 100;
-    uint256 public constant ORIGINAL_PRICE = 0.05 ether;
-
-    event OriginalNFTMinted(
-        uint256 indexed tokenId,
-        address indexed creator,
-        string groveUrl,
-        string metadataURI,
-        OverlayType overlayType
+    event EditionMinted(
+        uint256 indexed editionTokenId,
+        uint256 indexed originalTokenId,
+        address indexed minter,
+        address originalCreator
     );
 
-    constructor() ERC721("Higher Base Originals", "HBO") Ownable(msg.sender) {}
+    constructor(address _originalsContract) ERC721("Higher Base Editions", "HBE") Ownable(msg.sender) {
+        originalsContract = IHigherBaseOriginals(_originalsContract);
+    }
 
-    function mintOriginalNFT(
-        address to,
-        address creator,
-        string calldata groveUrl,
-        string calldata metadataURI, // Renamed to avoid shadowing
-        OverlayType overlayType
-    ) external payable returns (uint256) {
-        require(_tokenIds.current() < MAX_ORIGINALS, "Max originals minted");
-        require(msg.value >= ORIGINAL_PRICE, "Insufficient payment");
-        require(groveUrlToTokenId[groveUrl] == 0, "Grove URL already used");
+    /**
+     * @dev Check if an original NFT exists
+     * @param originalId The ID of the original NFT
+     * @return Whether the original exists
+     */
+    function originalExists(uint256 originalId) public view returns (bool) {
+        try originalsContract.ownerOf(originalId) returns (address) {
+            return true;
+        } catch {
+            return false;
+        }
+    }
 
+    /**
+     * @dev Mint an edition of an original NFT
+     * @param originalId The ID of the original NFT to create an edition of
+     */
+    function mintEdition(uint256 originalId) external payable {
+        // Check if the original exists
+        require(originalExists(originalId), "Original NFT does not exist");
+
+        // Check if the sender has already minted this original
+        require(!hasMinted[msg.sender][originalId], "You have already minted this original");
+
+        // Check if max editions for this original has been reached
+        uint256 maxForOriginal = maxEditions[originalId] > 0 ? maxEditions[originalId] : defaultMaxEditions;
+        
+        // Get current editions minted
+        uint256 currentEditionsMinted = editionsMinted[originalId];
+        require(currentEditionsMinted < maxForOriginal, "Max editions reached for this original");
+        
+        // Check payment
+        require(msg.value >= editionPrice, "Insufficient payment");
+
+        // Get the original creator
+        address originalCreator;
+        try originalsContract.creators(originalId) returns (address creator) {
+            originalCreator = creator;
+        } catch {
+            // If we can't get the creator, use the original owner
+            originalCreator = originalsContract.ownerOf(originalId);
+        }
+        
+        // Increment the token ID counter
         _tokenIds.increment();
-        uint256 newTokenId = _tokenIds.current();
+        uint256 newEditionId = _tokenIds.current();
+        
+        // Mint the new edition
+        _mint(msg.sender, newEditionId);
+        
+        // Set the token URI to be the same as the original
+        string memory tokenUriFromOriginal;
+        try originalsContract.tokenURI(originalId) returns (string memory uri) {
+            tokenUriFromOriginal = uri;
+        } catch {
+            // If we can't get the URI, use a default one
+            tokenUriFromOriginal = string(abi.encodePacked("ipfs://higher-editions/", toString(originalId), "/", toString(currentEditionsMinted + 1)));
+        }
+        _setTokenURI(newEditionId, tokenUriFromOriginal);
+        
+        // Record the relationship between edition and original
+        originalTokenId[newEditionId] = originalId;
+        
+        // Increment the editions minted counter
+        editionsMinted[originalId]++;
+        
+        // Mark that this address has minted this original
+        hasMinted[msg.sender][originalId] = true;
+        
+        emit EditionMinted(newEditionId, originalId, msg.sender, originalCreator);
+        
+        // Distribute payments
+        _distributePayment(originalCreator);
+    }
 
-        _mint(to, newTokenId);
-        _setTokenURI(newTokenId, metadataURI);
+    /**
+     * @dev Distribute the payment between creator and platform
+     * @param creator The creator of the original NFT
+     */
+    function _distributePayment(address creator) internal {
+        uint256 creatorAmount = (msg.value * creatorRoyaltyBps) / 10000;
+        uint256 platformAmount = (msg.value * platformFeeBps) / 10000;
+        uint256 remaining = msg.value - creatorAmount - platformAmount;
 
-        creators[newTokenId] = creator;
-        overlayTypes[newTokenId] = overlayType;
-        groveUrlToTokenId[groveUrl] = newTokenId;
+        // Send royalty to creator
+        (bool creatorSuccess, ) = payable(creator).call{value: creatorAmount}("");
+        require(creatorSuccess, "Creator payment failed");
 
-        emit OriginalNFTMinted(newTokenId, creator, groveUrl, metadataURI, overlayType);
+        // Send platform fee to contract owner
+        (bool platformSuccess, ) = payable(owner()).call{value: platformAmount}("");
+        require(platformSuccess, "Platform payment failed");
 
-        return newTokenId;
+        // If there is any remaining ETH due to rounding, return it to the minter
+        if (remaining > 0) {
+            (bool refundSuccess, ) = payable(msg.sender).call{value: remaining}("");
+            require(refundSuccess, "Refund failed");
+        }
+    }
+
+    /**
+     * @dev Set the maximum number of editions for a specific original
+     * @param originalId The ID of the original NFT
+     * @param max The maximum number of editions allowed
+     */
+    function setMaxEditions(uint256 originalId, uint256 max) external onlyOwner {
+        maxEditions[originalId] = max;
+    }
+
+    /**
+     * @dev Set the default maximum number of editions per original
+     * @param max The default maximum number of editions allowed
+     */
+    function setDefaultMaxEditions(uint256 max) external onlyOwner {
+        defaultMaxEditions = max;
+    }
+
+    /**
+     * @dev Set the price for minting an edition
+     * @param price The new price in wei
+     */
+    function setEditionPrice(uint256 price) external onlyOwner {
+        editionPrice = price;
+    }
+
+    /**
+     * @dev Set the creator royalty percentage (in basis points)
+     * @param bps The new royalty percentage in basis points (e.g., 1000 = 10%)
+     */
+    function setCreatorRoyaltyBps(uint256 bps) external onlyOwner {
+        require(bps <= 5000, "Royalty too high"); // Max 50%
+        creatorRoyaltyBps = bps;
+    }
+
+    /**
+     * @dev Set the platform fee percentage (in basis points)
+     * @param bps The new platform fee percentage in basis points
+     */
+    function setPlatformFeeBps(uint256 bps) external onlyOwner {
+        require(bps <= 2000, "Platform fee too high"); // Max 20%
+        platformFeeBps = bps;
+    }
+
+    /**
+     * @dev Withdraw accumulated platform fees
+     */
+    function withdraw() external onlyOwner {
+        uint256 balance = address(this).balance;
+        require(balance > 0, "No funds to withdraw");
+        (bool success, ) = payable(owner()).call{value: balance}("");
+        require(success, "Withdrawal failed");
+    }
+
+    /**
+     * @dev Check if a user has already minted an edition for a specific original
+     * @param user The address to check
+     * @param originalId The ID of the original NFT
+     * @return Whether the user has already minted an edition for this original
+     */
+    function hasUserMintedEdition(address user, uint256 originalId) external view returns (bool) {
+        return hasMinted[user][originalId];
+    }
+
+    /**
+     * @dev Helper function to convert uint to string
+     */
+    function toString(uint256 value) internal pure returns (string memory) {
+        if (value == 0) {
+            return "0";
+        }
+        
+        uint256 temp = value;
+        uint256 digits;
+        
+        while (temp != 0) {
+            digits++;
+            temp /= 10;
+        }
+        
+        bytes memory buffer = new bytes(digits);
+        while (value != 0) {
+            digits -= 1;
+            buffer[digits] = bytes1(uint8(48 + uint256(value % 10)));
+            value /= 10;
+        }
+        
+        return string(buffer);
     }
 
     // Override functions to resolve conflicts between ERC721URIStorage and ERC721Enumerable
@@ -64,168 +256,11 @@ contract HigherBaseOriginals is ERC721Enumerable, ERC721URIStorage, Ownable {
         super._increaseBalance(account, value);
     }
 
-   function tokenURI(uint256 tokenId) 
-    public 
-    view 
-    override(ERC721, ERC721URIStorage) 
-    returns (string memory) 
-{
-    return super.tokenURI(tokenId);
-}
+    function tokenURI(uint256 tokenId) public view override(ERC721, ERC721URIStorage) returns (string memory) {
+        return super.tokenURI(tokenId);
+    }
 
     function supportsInterface(bytes4 interfaceId) public view override(ERC721Enumerable, ERC721URIStorage) returns (bool) {
         return super.supportsInterface(interfaceId);
     }
-
-    function withdraw() external onlyOwner {
-        uint256 balance = address(this).balance;
-        require(balance > 0, "No funds to withdraw");
-        (bool success, ) = payable(owner()).call{value: balance}("");
-        require(success, "Withdrawal failed");
-    }
-}
-
-
-***
-
-EditionMinter.tsx
-
-"use client";
-
-import { useState } from "react";
-import { mintEdition } from "@/services/contract";
-import { useAccount, useWalletClient } from "wagmi";
-import { ethers } from "ethers";
-
-interface EditionMinterProps {
-  originalId: number;
-  editionCount: number;
-  price: string;
-}
-
-// Define the expected result type from mintEdition
-interface MintResult {
-  success: boolean;
-  transactionHash?: string;
-  editionTokenId?: number;
-  originalTokenId?: number;
-  error?: string;
-}
-
-export function EditionMinter({
-  originalId,
-  editionCount,
-  price,
-}: EditionMinterProps) {
-  const [isMinting, setIsMinting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [txHash, setTxHash] = useState<string | null>(null);
-  const { isConnected, address } = useAccount();
-  const { data: walletClient } = useWalletClient();
-
-  const handleMint = async () => {
-    setIsMinting(true);
-    setError(null);
-    setTxHash(null);
-
-    // Add a timeout to prevent getting stuck in minting state
-    const mintingTimeout = setTimeout(() => {
-      setIsMinting(false);
-      setError("Minting operation timed out. Please try again.");
-    }, 30000); // 30 second timeout for transaction
-
-    try {
-      // Check if wallet is connected
-      if (!isConnected || !walletClient) {
-        setError("Please connect your wallet to mint an edition.");
-        clearTimeout(mintingTimeout);
-        setIsMinting(false);
-        return;
-      }
-
-      // Create an ethers signer from the walletClient
-      const provider = new ethers.BrowserProvider(walletClient as any);
-      const signer = await provider.getSigner();
-
-      // Call the mintEdition function with the signer
-      const result = (await mintEdition(originalId, signer)) as MintResult;
-
-      clearTimeout(mintingTimeout);
-
-      if (result.success && result.transactionHash) {
-        setTxHash(result.transactionHash);
-      } else {
-        setError(result.error || "Failed to mint edition");
-      }
-    } catch (err: any) {
-      clearTimeout(mintingTimeout);
-      console.error("Minting error:", err);
-      setError(err.message || "An unexpected error occurred");
-    } finally {
-      clearTimeout(mintingTimeout);
-      setIsMinting(false);
-    }
-  };
-
-  return (
-    <div className="mt-6">
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-gray-600 dark:text-gray-300">
-          Editions minted: {editionCount} / 100
-        </span>
-        <span className="font-medium text-gray-800 dark:text-gray-200">
-          {price} ETH
-        </span>
-      </div>
-
-      {txHash ? (
-        <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg mb-4">
-          <p className="text-green-700 dark:text-green-300 text-sm">
-            Edition minted successfully!
-          </p>
-          <a
-            href={`https://sepolia-explorer.base.org/tx/${txHash}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs text-green-600 dark:text-green-400 underline mt-1 inline-block"
-          >
-            View transaction
-          </a>
-        </div>
-      ) : error ? (
-        <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg mb-4">
-          <p className="text-blue-700 dark:text-blue-300 text-sm">{error}</p>
-          {!isConnected && (
-            <>
-              <p className="text-xs text-blue-600 dark:text-blue-400 mt-2">
-                To mint an edition, you need to:
-              </p>
-              <ol className="text-xs text-blue-600 dark:text-blue-400 list-decimal pl-5 mt-1">
-                <li>
-                  Connect your wallet using the button in the top-left corner
-                </li>
-                <li>Switch to Base Sepolia testnet</li>
-                <li>Have some Base Sepolia ETH for gas</li>
-                <li>Approve the transaction</li>
-              </ol>
-            </>
-          )}
-        </div>
-      ) : null}
-
-      <button
-        onClick={handleMint}
-        disabled={isMinting}
-        className={`w-full py-3 px-4 bg-[#3b82f6] hover:bg-[#2563eb] text-white font-semibold rounded-lg shadow-sm transition-colors ${
-          isMinting ? "opacity-70 cursor-not-allowed" : ""
-        }`}
-      >
-        {isMinting
-          ? "Minting..."
-          : isConnected
-          ? "Mint Edition"
-          : "Connect Wallet to Mint"}
-      </button>
-    </div>
-  );
 }

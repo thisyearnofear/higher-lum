@@ -6,166 +6,107 @@ import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 
-interface IHigherBaseOriginals {
-    function ownerOf(uint256 tokenId) external view returns (address);
-    function tokenURI(uint256 tokenId) external view returns (string memory);
-    function creators(uint256 tokenId) external view returns (address);
-}
-
-contract HigherBaseEditions is ERC721Enumerable, ERC721URIStorage, Ownable {
+contract HigherBaseOriginals is ERC721Enumerable, ERC721URIStorage, Ownable {
     using Counters for Counters.Counter;
     Counters.Counter private _tokenIds;
 
-    // Reference to the originals contract
-    IHigherBaseOriginals public originalsContract;
+    // Define overlay types as an enum for better type safety
+    enum OverlayType { HIGHER, BASE, DICKBUTTIFY }
 
-    // Mapping from edition token ID to original token ID
-    mapping(uint256 => uint256) public originalTokenId;
+    // Mapping from token ID to creator address
+    mapping(uint256 => address) public creators;
     
-    // Mapping from original token ID to number of editions minted
-    mapping(uint256 => uint256) public editionsMinted;
+    // Mapping from token ID to overlay type
+    mapping(uint256 => OverlayType) public overlayTypes;
     
-    // Mapping from original token ID to max editions allowed
-    mapping(uint256 => uint256) public maxEditions;
-    
-    // Default max editions per original
-    uint256 public defaultMaxEditions = 10;
-    
-    // Edition price
-    uint256 public editionPrice = 0.01 ether;
-    
-    // Creator royalty percentage (in basis points, e.g., 1000 = 10%)
-    uint256 public creatorRoyaltyBps = 1000;
-    
-    // Platform fee percentage (in basis points)
-    uint256 public platformFeeBps = 500;
+    // Mapping from Grove URL to token ID for uniqueness check
+    mapping(string => uint256) public groveUrlToTokenId;
 
-    event EditionMinted(
-        uint256 indexed editionTokenId,
-        uint256 indexed originalTokenId,
-        address indexed minter,
-        address originalCreator
+    uint256 public constant MAX_ORIGINALS = 100;
+    uint256 public constant ORIGINAL_PRICE = 0.05 ether;
+
+    event OriginalNFTMinted(
+        uint256 indexed tokenId,
+        address indexed creator,
+        string groveUrl,
+        string metadataURI,
+        OverlayType overlayType
     );
 
-    constructor(address _originalsContract) ERC721("Higher Base Editions", "HBE") Ownable(msg.sender) {
-        originalsContract = IHigherBaseOriginals(_originalsContract);
-    }
+    constructor() ERC721("Higher Base Originals", "HBO") Ownable(msg.sender) {}
 
     /**
-     * @dev Mint an edition of an original NFT
-     * @param originalId The ID of the original NFT to create an edition of
+     * @dev Mint a new original NFT
+     * @param to The address that will own the minted token
+     * @param creator The address that created the artwork
+     * @param groveUrl The Grove URL for the artwork
+     * @param metadataURI The token URI for the new token
+     * @param overlayType The overlay type for the token
+     * @return The ID of the newly minted token
      */
-    function mintEdition(uint256 originalId) external payable {
-        // Check if the original exists by trying to get its owner
-        address originalOwner;
-        try originalsContract.ownerOf(originalId) returns (address owner) {
-            originalOwner = owner;
-        } catch {
-            revert("Original NFT does not exist");
-        }
+    function mintOriginalNFT(
+        address to,
+        address creator,
+        string calldata groveUrl,
+        string calldata metadataURI,
+        OverlayType overlayType
+    ) external payable returns (uint256) {
+        require(_tokenIds.current() < MAX_ORIGINALS, "Max originals minted");
+        require(msg.value >= ORIGINAL_PRICE, "Insufficient payment");
+        require(groveUrlToTokenId[groveUrl] == 0, "Grove URL already used");
 
-        // Check if max editions for this original has been reached
-        uint256 maxForOriginal = maxEditions[originalId] > 0 ? maxEditions[originalId] : defaultMaxEditions;
-        require(editionsMinted[originalId] < maxForOriginal, "Max editions reached for this original");
-        
-        // Check payment
-        require(msg.value >= editionPrice, "Insufficient payment");
-
-        // Get the original creator
-        address originalCreator = originalsContract.creators(originalId);
-        
-        // Increment the token ID counter
         _tokenIds.increment();
-        uint256 newEditionId = _tokenIds.current();
-        
-        // Mint the new edition
-        _mint(msg.sender, newEditionId);
-        
-        // Set the token URI to be the same as the original
-        string memory tokenUriFromOriginal = originalsContract.tokenURI(originalId);
-        _setTokenURI(newEditionId, tokenUriFromOriginal);
-        
-        // Record the relationship between edition and original
-        originalTokenId[newEditionId] = originalId;
-        
-        // Increment the editions minted counter
-        editionsMinted[originalId]++;
-        
-        // Distribute payments
-        _distributePayment(originalCreator);
-        
-        emit EditionMinted(newEditionId, originalId, msg.sender, originalCreator);
+        uint256 newTokenId = _tokenIds.current();
+
+        _mint(to, newTokenId);
+        _setTokenURI(newTokenId, metadataURI);
+
+        creators[newTokenId] = creator;
+        overlayTypes[newTokenId] = overlayType;
+        groveUrlToTokenId[groveUrl] = newTokenId;
+
+        emit OriginalNFTMinted(newTokenId, creator, groveUrl, metadataURI, overlayType);
+
+        return newTokenId;
     }
 
     /**
-     * @dev Distribute the payment between creator and platform
-     * @param creator The creator of the original NFT
+     * @dev Get the string representation of an overlay type
+     * @param overlayType The overlay type enum value
+     * @return The string representation of the overlay type
      */
-    function _distributePayment(address creator) internal {
-    uint256 creatorAmount = (msg.value * creatorRoyaltyBps) / 10000;
-    uint256 platformAmount = (msg.value * platformFeeBps) / 10000;
-    uint256 remaining = msg.value - creatorAmount - platformAmount;
-
-    // Send royalty to creator
-    (bool creatorSuccess, ) = payable(creator).call{value: creatorAmount}("");
-    require(creatorSuccess, "Creator payment failed");
-
-    // Send platform fee to contract owner
-    (bool platformSuccess, ) = payable(owner()).call{value: platformAmount}("");
-    require(platformSuccess, "Platform payment failed");
-
-    // If there is any remaining ETH due to rounding, return it to the minter
-    if (remaining > 0) {
-        (bool refundSuccess, ) = payable(msg.sender).call{value: remaining}("");
-        require(refundSuccess, "Refund failed");
+    function getOverlayTypeString(OverlayType overlayType) public pure returns (string memory) {
+        if (overlayType == OverlayType.HIGHER) return "higher";
+        if (overlayType == OverlayType.BASE) return "base";
+        if (overlayType == OverlayType.DICKBUTTIFY) return "dickbuttify";
+        return "none";
     }
-}
 
     /**
-     * @dev Set the maximum number of editions for a specific original
-     * @param originalId The ID of the original NFT
-     * @param max The maximum number of editions allowed
+     * @dev Get the overlay type string for a token
+     * @param tokenId The ID of the token
+     * @return The string representation of the token's overlay type
      */
-    function setMaxEditions(uint256 originalId, uint256 max) external onlyOwner {
-        maxEditions[originalId] = max;
+    function getTokenOverlayTypeString(uint256 tokenId) external view returns (string memory) {
+        require(_exists(tokenId), "Token does not exist");
+        return getOverlayTypeString(overlayTypes[tokenId]);
     }
 
     /**
-     * @dev Set the default maximum number of editions per original
-     * @param max The default maximum number of editions allowed
+     * @dev Check if a token exists
+     * @param tokenId The ID of the token to check
+     * @return Whether the token exists
      */
-    function setDefaultMaxEditions(uint256 max) external onlyOwner {
-        defaultMaxEditions = max;
+    function _exists(uint256 tokenId) internal view returns (bool) {
+        try this.ownerOf(tokenId) returns (address) {
+            return true;
+        } catch {
+            return false;
+        }
     }
 
     /**
-     * @dev Set the price for minting an edition
-     * @param price The new price in wei
-     */
-    function setEditionPrice(uint256 price) external onlyOwner {
-        editionPrice = price;
-    }
-
-    /**
-     * @dev Set the creator royalty percentage (in basis points)
-     * @param bps The new royalty percentage in basis points (e.g., 1000 = 10%)
-     */
-    function setCreatorRoyaltyBps(uint256 bps) external onlyOwner {
-        require(bps <= 5000, "Royalty too high"); // Max 50%
-        creatorRoyaltyBps = bps;
-    }
-
-    /**
-     * @dev Set the platform fee percentage (in basis points)
-     * @param bps The new platform fee percentage in basis points
-     */
-    function setPlatformFeeBps(uint256 bps) external onlyOwner {
-        require(bps <= 2000, "Platform fee too high"); // Max 20%
-        platformFeeBps = bps;
-    }
-
-    /**
-     * @dev Withdraw accumulated platform fees
+     * @dev Withdraw accumulated fees
      */
     function withdraw() external onlyOwner {
         uint256 balance = address(this).balance;
@@ -190,4 +131,4 @@ contract HigherBaseEditions is ERC721Enumerable, ERC721URIStorage, Ownable {
     function supportsInterface(bytes4 interfaceId) public view override(ERC721Enumerable, ERC721URIStorage) returns (bool) {
         return super.supportsInterface(interfaceId);
     }
-} 
+}

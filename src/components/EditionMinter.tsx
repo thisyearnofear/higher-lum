@@ -1,109 +1,116 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { mintEdition, getAvailableScrollEditions } from "@/services/contract";
+import {
+  mintEdition,
+  getMaxEditionsForOriginal,
+  getCurrentEditionsMinted,
+  hasUserMintedEdition,
+  originalExists,
+} from "@/services/contract";
 import { useAccount, useWalletClient } from "wagmi";
 import { ethers } from "ethers";
-import {
-  SCROLLIFY_EDITIONS_ADDRESS,
-  EDITIONS_ADDRESS,
-} from "@/config/nft-config";
-import {
-  ScrollifyEditionsABI,
-  HigherBaseEditionsABI,
-} from "@/services/contract";
 
 interface EditionMinterProps {
   originalId: number;
   editionCount: number;
   price: string;
-  chainId?: number;
+  maxEditions?: number;
+  isScroll?: boolean;
 }
 
 // Define the expected result type from mintEdition
 interface MintResult {
   success: boolean;
-  transactionHash?: string;
-  editionTokenId?: number | null;
-  originalTokenId?: number;
-  chainId?: number;
-  error?: string;
+  message: string;
+  txHash?: string;
 }
 
 export function EditionMinter({
   originalId,
   editionCount,
   price,
-  chainId = 84532,
+  maxEditions = 100,
+  isScroll = false,
 }: EditionMinterProps) {
+  // Ensure originalId is a number
+  const safeOriginalId = Number(originalId);
+
   const [isMinting, setIsMinting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [networkError, setNetworkError] = useState<string | null>(null);
   const [isSwitchingNetwork, setIsSwitchingNetwork] = useState(false);
-  const [availableEditions, setAvailableEditions] = useState<number[]>([]);
   const [currentEditionCount, setCurrentEditionCount] = useState(editionCount);
   const { isConnected, address, chain } = useAccount();
   const { data: walletClient } = useWalletClient();
+  const [hasAlreadyMinted, setHasAlreadyMinted] = useState<boolean>(false);
+  const [originalDoesExist, setOriginalDoesExist] = useState<boolean>(true);
+  const [maxEditionsForOriginal, setMaxEditionsForOriginal] =
+    useState<number>(maxEditions);
 
   // Track network switch attempts to prevent infinite loops
   const networkSwitchAttemptedRef = useRef(false);
   const lastNetworkSwitchTimeRef = useRef(0);
 
+  // Chain IDs
+  const baseSepoliaChainId = 84532;
+  const scrollSepoliaChainId = 534351;
+  const chainId = isScroll ? scrollSepoliaChainId : baseSepoliaChainId;
+
+  // Log the originalId when the component mounts or when it changes
+  useEffect(() => {
+    console.log(
+      `EditionMinter: Received originalId=${originalId} (${typeof originalId}), converted to safeOriginalId=${safeOriginalId}`
+    );
+
+    // Validate originalId
+    if (isNaN(safeOriginalId) || safeOriginalId <= 0) {
+      setError(
+        `Invalid original ID: ${originalId}. Must be a positive number.`
+      );
+      setOriginalDoesExist(false);
+    }
+  }, [originalId, safeOriginalId]);
+
   // Function to refresh edition count
   const refreshEditionCount = useCallback(async () => {
     try {
-      let provider;
-      let contractAddress;
-      let contractABI;
+      // Check if the original exists
+      const exists = await originalExists(safeOriginalId, isScroll);
+      setOriginalDoesExist(exists);
 
-      if (chainId === 534351) {
-        // Scroll Sepolia
-        provider = new ethers.JsonRpcProvider("https://sepolia-rpc.scroll.io/");
-        contractAddress = SCROLLIFY_EDITIONS_ADDRESS;
-        contractABI = ScrollifyEditionsABI;
-      } else {
-        // Base Sepolia
-        provider = new ethers.JsonRpcProvider("https://sepolia.base.org");
-        contractAddress = EDITIONS_ADDRESS;
-        contractABI = HigherBaseEditionsABI;
-      }
-
-      const contract = new ethers.Contract(
-        contractAddress,
-        contractABI,
-        provider
-      );
-
-      // Get both editionsMinted and check if the original exists
-      const [count, originalExists] = await Promise.all([
-        contract.editionsMinted(originalId),
-        chainId === 534351
-          ? contract.originalExists(originalId)
-          : Promise.resolve(true),
-      ]);
-
-      if (!originalExists && chainId === 534351) {
-        console.log(`Original #${originalId} doesn't exist on Scroll`);
+      if (!exists) {
+        console.log(`Original #${safeOriginalId} doesn't exist`);
         setCurrentEditionCount(0);
         return;
       }
 
-      const editionCount = Number(count);
-      setCurrentEditionCount(editionCount);
-      console.log(`Edition count for original #${originalId}: ${editionCount}`);
+      // Get the max editions for this original
+      const maxForOriginal = await getMaxEditionsForOriginal(
+        safeOriginalId,
+        isScroll
+      );
+      setMaxEditionsForOriginal(maxForOriginal);
+      console.log(
+        `Max editions for original #${safeOriginalId}: ${maxForOriginal}`
+      );
 
-      // Update available editions for Scroll
-      if (chainId === 534351) {
-        const available = await getAvailableScrollEditions();
-        setAvailableEditions(available);
-      }
+      // Get the edition count
+      const editionCount = await getCurrentEditionsMinted(
+        safeOriginalId,
+        isScroll
+      );
+      setCurrentEditionCount(editionCount);
+      console.log(
+        `Edition count for original #${safeOriginalId}: ${editionCount}`
+      );
     } catch (error) {
       console.error("Error refreshing edition count:", error);
       // On error, try again after a short delay
       setTimeout(refreshEditionCount, 2000);
     }
-  }, [chainId, originalId]);
+  }, [safeOriginalId, isScroll]);
 
   // Poll for edition count updates more frequently right after minting
   useEffect(() => {
@@ -141,36 +148,64 @@ export function EditionMinter({
     refreshEditionCount();
   }, [editionCount, refreshEditionCount]);
 
-  // Update available editions for Scroll
-  useEffect(() => {
-    if (chainId === 534351) {
-      const checkAvailableEditions = async () => {
-        try {
-          const available = await getAvailableScrollEditions();
-          setAvailableEditions(available);
-        } catch (err) {
-          console.error("Error checking available editions:", err);
-        }
-      };
-
-      checkAvailableEditions();
-    }
-  }, [chainId, currentEditionCount]);
-
   // Check if user is on the correct network
+  const isCorrectNetwork = chain?.id === chainId;
+
+  // Network check effect
   useEffect(() => {
     if (isConnected && chain?.id !== chainId) {
+      const networkName = isScroll ? "Scroll Sepolia" : "Base Sepolia";
       setNetworkError(
-        `Please switch to ${
-          chainId === 534351 ? "Scroll" : "Base"
-        } Sepolia network to mint this edition.`
+        `Please switch to ${networkName} network to mint this edition.`
       );
     } else {
       setNetworkError(null);
       // Reset the network switch attempt flag when on the correct network
       networkSwitchAttemptedRef.current = false;
     }
-  }, [isConnected, chain?.id, chainId]);
+  }, [isConnected, chain?.id, chainId, isScroll]);
+
+  // Check if the user has already minted an edition for this original
+  useEffect(() => {
+    if (!isConnected || !address) return;
+
+    const checkIfMinted = async () => {
+      try {
+        const minted = await hasUserMintedEdition(
+          address,
+          safeOriginalId,
+          isScroll
+        );
+        setHasAlreadyMinted(minted);
+        if (minted) {
+          setError("You've already minted an edition for this original.");
+        }
+      } catch (error) {
+        console.error("Error checking if user has minted:", error);
+      }
+    };
+
+    checkIfMinted();
+  }, [isConnected, address, safeOriginalId, isScroll]);
+
+  // Check if the original exists
+  useEffect(() => {
+    const checkOriginalExists = async () => {
+      try {
+        const exists = await originalExists(safeOriginalId, isScroll);
+        setOriginalDoesExist(exists);
+        if (!exists) {
+          setError(
+            `Original #${safeOriginalId} does not exist. Please choose a valid original ID.`
+          );
+        }
+      } catch (error) {
+        console.error("Error checking if original exists:", error);
+      }
+    };
+
+    checkOriginalExists();
+  }, [safeOriginalId, isScroll]);
 
   // Function to parse user-friendly error messages
   const getReadableErrorMessage = (error: unknown): string => {
@@ -196,11 +231,7 @@ export function EditionMinter({
       errorMessage.includes("reverted") ||
       errorMessage.includes("status: 0")
     ) {
-      if (chainId === 534351) {
-        return "Transaction reverted on Scroll. This could be because the NFT has already been minted or the contract doesn't recognize this original ID.";
-      } else {
-        return "Transaction reverted. This could be because the NFT has already been minted or there's an issue with the contract.";
-      }
+      return "Transaction reverted. This could be because you've already minted this edition or the contract has reached its maximum supply.";
     }
 
     // Check for wrong network errors
@@ -210,14 +241,8 @@ export function EditionMinter({
       errorMessage.includes("could not decode result data") ||
       errorMessage.includes("missing revert data")
     ) {
-      return `Please make sure you're connected to ${
-        chainId === 534351 ? "Scroll" : "Base"
-      } Sepolia network and refresh the page.`;
-    }
-
-    // Check for Scroll-specific errors
-    if (chainId === 534351 && errorMessage.includes("CALL_EXCEPTION")) {
-      return "There was an issue with the Scroll contract. Please try again later or contact support.";
+      const networkName = isScroll ? "Scroll Sepolia" : "Base Sepolia";
+      return `Please make sure you're connected to ${networkName} network and refresh the page.`;
     }
 
     // Check for insufficient funds
@@ -249,178 +274,161 @@ export function EditionMinter({
       console.log("Throttling network switch request");
       return;
     }
-
     lastNetworkSwitchTimeRef.current = now;
-    networkSwitchAttemptedRef.current = true;
-    setIsSwitchingNetwork(true);
 
-    try {
-      if (window.ethereum) {
-        const hexChainId =
-          chainId === 534351
-            ? "0x8274f" // Scroll Sepolia
-            : "0x14a34"; // Base Sepolia
-
-        console.log(`Switching to chain ID: ${chainId} (${hexChainId})`);
-
-        await window.ethereum.request({
-          method: "wallet_switchEthereumChain",
-          params: [{ chainId: hexChainId }],
-        });
-
-        console.log("Network switch request sent");
-      }
-    } catch (err) {
-      console.error("Failed to switch network:", err);
-      setError(`Failed to switch network: ${getReadableErrorMessage(err)}`);
-    } finally {
-      // Add a delay before setting isSwitchingNetwork to false
-      // This gives MetaMask time to process the request
-      setTimeout(() => {
-        setIsSwitchingNetwork(false);
-      }, 2000);
-    }
-  };
-
-  const handleMint = async () => {
-    setIsMinting(true);
-    setError(null);
-    setTxHash(null);
-
-    // Check if on correct network first
-    if (chain?.id !== chainId) {
-      setError(
-        `Please switch to ${
-          chainId === 534351 ? "Scroll" : "Base"
-        } Sepolia network first.`
-      );
-      setIsMinting(false);
+    if (!walletClient || networkSwitchAttemptedRef.current) {
       return;
     }
 
-    // For Scroll, check if the edition is available
-    if (chainId === 534351) {
-      if (!availableEditions.includes(originalId)) {
-        setError(
-          `Maximum editions (100) already minted for original ID ${originalId}.`
-        );
-        setIsMinting(false);
-        return;
-      }
+    try {
+      setIsSwitchingNetwork(true);
+      networkSwitchAttemptedRef.current = true;
+
+      // Request network switch
+      await walletClient.switchChain({ id: chainId });
+
+      const networkName = isScroll ? "Scroll Sepolia" : "Base Sepolia";
+      console.log(`Successfully switched to ${networkName}`);
+      setNetworkError(null);
+    } catch (error) {
+      console.error("Error switching network:", error);
+      setError(getReadableErrorMessage(error));
+    } finally {
+      setIsSwitchingNetwork(false);
+      // Reset the network switch attempt flag after a delay
+      setTimeout(() => {
+        networkSwitchAttemptedRef.current = false;
+      }, 5000);
+    }
+  };
+
+  // Function to handle minting
+  const handleMint = async () => {
+    if (!isConnected) {
+      setError("Please connect your wallet to mint an edition.");
+      return;
     }
 
-    // Add a timeout to prevent getting stuck in minting state
-    const mintingTimeout = setTimeout(() => {
-      setIsMinting(false);
-      setError("Minting operation timed out. Please try again.");
-    }, 60000); // 60 second timeout for transaction
+    if (chain?.id !== chainId) {
+      const networkName = isScroll ? "Scroll Sepolia" : "Base Sepolia";
+      setNetworkError(
+        `Please switch to ${networkName} network to mint this edition.`
+      );
+      return;
+    }
+
+    // Check if the original exists
+    if (!originalDoesExist) {
+      setError(
+        `Original #${safeOriginalId} does not exist. Please choose a valid original ID.`
+      );
+      return;
+    }
+
+    // Check if the user has already minted an edition for this original
+    if (hasAlreadyMinted) {
+      setError(
+        "You have already minted an edition for this original. Each address can only mint one edition per original."
+      );
+      return;
+    }
+
+    // Check if all editions have been minted
+    if (currentEditionCount >= maxEditionsForOriginal) {
+      setError(
+        `All ${maxEditionsForOriginal} editions have been minted for this original.`
+      );
+      return;
+    }
 
     try {
-      // Check if wallet is connected
-      if (!isConnected || !walletClient) {
-        setError("Please connect your wallet to mint an edition.");
-        clearTimeout(mintingTimeout);
-        setIsMinting(false);
-        return;
-      }
+      setIsMinting(true);
+      setError(null);
+      setTxHash(null);
 
-      // Create an ethers signer from the walletClient
-      const provider = new ethers.BrowserProvider(
-        walletClient as ethers.Eip1193Provider
+      console.log(
+        `Minting edition for original #${safeOriginalId} with price ${price} ETH`
       );
-      const signer = await provider.getSigner();
 
-      console.log(`Minting with address: ${address} on chain ID: ${chainId}`);
+      // Call the mintEdition function
+      const result = await mintEdition(safeOriginalId, isScroll);
 
-      // Add extra logging for Scroll
-      if (chainId === 534351) {
-        console.log(`Minting Scroll edition for original ID: ${originalId}`);
-        console.log(
-          `Using contract: ${
-            chainId === 534351 ? "ScrollifyEditions" : "HigherBaseEditions"
-          }`
-        );
-      }
-
-      // Call the mintEdition function with the signer and chainId
-      const result: MintResult = await mintEdition(originalId, signer, chainId);
-
-      clearTimeout(mintingTimeout);
-
-      if (result.success && result.transactionHash) {
-        setTxHash(result.transactionHash);
+      if (result.success) {
+        setTxHash(result.txHash || null);
         // Refresh the edition count after successful mint
-        await refreshEditionCount();
+        refreshEditionCount();
+        // Set hasAlreadyMinted to true after successful mint
+        setHasAlreadyMinted(true);
       } else {
-        setError(getReadableErrorMessage(result.error));
+        // Handle error message from the result
+        setError(result.message);
       }
-    } catch (err: unknown) {
-      clearTimeout(mintingTimeout);
-      console.error("Minting error:", err);
-      setError(getReadableErrorMessage(err));
+    } catch (error) {
+      console.error("Error minting edition:", error);
+      setError(getReadableErrorMessage(error));
     } finally {
-      clearTimeout(mintingTimeout);
       setIsMinting(false);
     }
   };
 
-  // Get the correct block explorer URL based on chainId
-  const getExplorerUrl = (hash: string) => {
-    if (chainId === 534351) {
-      // Scroll Sepolia
-      return `https://sepolia.scrollscan.com/tx/${hash}`;
-    } else {
-      // Base Sepolia
-      return `https://sepolia-explorer.base.org/tx/${hash}`;
+  // Calculate remaining editions
+  const remainingEditions = maxEditionsForOriginal - currentEditionCount;
+
+  // Disable the mint button if:
+  // 1. Not connected to wallet
+  // 2. Wrong network
+  // 3. Already minted
+  // 4. Sold out
+  // 5. Original doesn't exist
+  const isMintDisabled =
+    !isConnected ||
+    !isCorrectNetwork ||
+    hasAlreadyMinted ||
+    currentEditionCount >= maxEditionsForOriginal ||
+    !originalDoesExist;
+
+  // Determine the button text based on state
+  const getMintButtonText = () => {
+    if (!isConnected) return "Connect Wallet";
+    if (!isCorrectNetwork) {
+      const networkName = isScroll ? "Scroll Sepolia" : "Base Sepolia";
+      return `Switch to ${networkName}`;
     }
+    if (hasAlreadyMinted) return "Already Minted";
+    if (currentEditionCount >= maxEditionsForOriginal) return "Sold Out";
+    if (!originalDoesExist) return "Original Not Found";
+    if (isMinting) return "Minting...";
+    return `Mint for ${price} ETH`;
   };
 
   return (
-    <div className="mt-2">
-      <div className="flex items-center justify-center mb-2">
-        <span className="text-xs font-medium text-gray-800 dark:text-gray-200">
-          {price} ETH
-        </span>
+    <div className="w-full">
+      <div className="flex flex-col mb-3">
+        <p className="text-sm">
+          <span className="font-medium">Editions Minted:</span>{" "}
+          {currentEditionCount}/{maxEditionsForOriginal}
+        </p>
+        <p className="text-xs text-gray-600 dark:text-gray-400">
+          {remainingEditions > 0
+            ? `${remainingEditions} editions available`
+            : "Sold out"}
+        </p>
+        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+          Price: {price} ETH
+        </p>
       </div>
 
-      {/* Network warning banner */}
-      {networkError && (
-        <div className="p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg mb-2 text-center">
-          <p className="text-yellow-700 dark:text-yellow-300 text-xs flex items-center justify-center">
-            <svg
-              className="w-3 h-3 mr-1"
-              fill="currentColor"
-              viewBox="0 0 20 20"
-            >
-              <path
-                fillRule="evenodd"
-                d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
-                clipRule="evenodd"
-              />
-            </svg>
-            {networkError}
-          </p>
-          <button
-            onClick={handleSwitchNetwork}
-            disabled={isSwitchingNetwork}
-            className={`mt-1 text-xs bg-yellow-100 dark:bg-yellow-800 text-yellow-800 dark:text-yellow-200 px-2 py-1 rounded-md hover:bg-yellow-200 dark:hover:bg-yellow-700 transition-colors ${
-              isSwitchingNetwork ? "opacity-50 cursor-not-allowed" : ""
-            }`}
-          >
-            {isSwitchingNetwork
-              ? "Switching..."
-              : `Switch to ${chainId === 534351 ? "Scroll" : "Base"} Sepolia`}
-          </button>
-        </div>
-      )}
-
       {txHash ? (
-        <div className="p-2 bg-green-50 dark:bg-green-900/20 rounded-lg mb-2 text-center">
-          <p className="text-green-700 dark:text-green-300 text-xs">
+        <div className="p-2 bg-green-50 dark:bg-green-900/20 rounded-lg mb-3">
+          <p className="text-green-700 dark:text-green-300 text-sm">
             Edition minted successfully!
           </p>
           <a
-            href={getExplorerUrl(txHash)}
+            href={
+              isScroll
+                ? `https://sepolia-blockscout.scroll.io/tx/${txHash}`
+                : `https://sepolia-explorer.base.org/tx/${txHash}`
+            }
             target="_blank"
             rel="noopener noreferrer"
             className="text-xs text-green-600 dark:text-green-400 underline mt-1 inline-block"
@@ -429,34 +437,34 @@ export function EditionMinter({
           </a>
         </div>
       ) : error ? (
-        <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg mb-2 text-center">
-          <p className="text-blue-700 dark:text-blue-300 text-xs">{error}</p>
-          {!isConnected && (
-            <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-              Connect your wallet to mint
-            </p>
-          )}
+        <div className="p-2 bg-red-50 dark:bg-red-900/20 rounded-lg mb-3">
+          <p className="text-red-700 dark:text-red-300 text-sm">{error}</p>
+        </div>
+      ) : networkError ? (
+        <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg mb-3">
+          <p className="text-blue-700 dark:text-blue-300 text-sm">
+            {networkError}
+          </p>
         </div>
       ) : null}
 
+      {/* Warning if original doesn't exist */}
+      {!originalDoesExist && (
+        <div className="p-2 bg-red-50 dark:bg-red-900/20 rounded text-xs text-red-600 dark:text-red-300 text-center mb-3">
+          <p>This original NFT does not exist.</p>
+        </div>
+      )}
+
       <button
-        onClick={handleMint}
-        disabled={isMinting || !!networkError || currentEditionCount >= 100}
-        className={`w-full py-2 px-3 bg-[#3b82f6] hover:bg-[#2563eb] text-white font-medium rounded-lg shadow-sm transition-colors text-xs ${
-          isMinting || !!networkError || currentEditionCount >= 100
-            ? "opacity-70 cursor-not-allowed"
-            : ""
-        }`}
+        onClick={!isCorrectNetwork ? handleSwitchNetwork : handleMint}
+        disabled={isMintDisabled && isCorrectNetwork}
+        className={`w-full py-2 px-3 ${
+          isMintDisabled && isCorrectNetwork
+            ? "bg-gray-400 dark:bg-gray-700 cursor-not-allowed"
+            : "bg-[#4caf50] hover:bg-[#45a049]"
+        } text-white font-medium rounded-lg shadow-sm transition-colors text-sm`}
       >
-        {isMinting
-          ? "Minting..."
-          : networkError
-          ? `Switch to ${chainId === 534351 ? "Scroll" : "Base"} Sepolia`
-          : isConnected
-          ? currentEditionCount >= 100
-            ? "Maximum Editions Minted"
-            : "Mint Edition"
-          : "Connect Wallet to Mint"}
+        {getMintButtonText()}
       </button>
     </div>
   );

@@ -71,117 +71,205 @@ export function useTransitions({
   // Helper function to save NFTs to cache
   const saveNFTsToCache = useCallback((key: string, nfts: NFTMetadata[]) => {
     try {
-      localStorage.setItem(key, JSON.stringify(nfts));
+      if (!nfts || nfts.length === 0) {
+        console.warn(`Attempted to cache empty NFT array with key: ${key}`);
+        return;
+      }
+
+      // Stringify the NFTs with a limit on size to prevent localStorage issues
+      const nftsString = JSON.stringify(nfts);
+
+      // Check if the data is too large (localStorage typically has a 5MB limit)
+      if (nftsString.length > 4 * 1024 * 1024) {
+        // 4MB safety limit
+        console.warn(
+          `NFT data for ${key} is too large for localStorage (${(
+            nftsString.length /
+            (1024 * 1024)
+          ).toFixed(2)}MB), skipping cache`
+        );
+        return;
+      }
+
+      localStorage.setItem(key, nftsString);
       localStorage.setItem(CACHE_TIMESTAMP_KEY, Date.now().toString());
       console.log(`Saved ${nfts.length} NFTs to cache with key: ${key}`);
     } catch (error) {
       console.error(`Error saving NFTs to cache: ${error}`);
+
+      // If we hit a quota error, try to clear old caches
+      if (
+        error instanceof DOMException &&
+        error.name === "QuotaExceededError"
+      ) {
+        try {
+          console.log("Clearing old caches due to quota exceeded");
+          localStorage.removeItem(key);
+          // Don't clear timestamp as other caches might still be valid
+        } catch (clearError) {
+          console.error(
+            `Failed to clear cache after quota error: ${clearError}`
+          );
+        }
+      }
     }
   }, []);
 
   // Helper function to load NFTs from cache
-  const loadNFTsFromCache = useCallback((key: string): NFTMetadata[] | null => {
-    try {
-      const cachedData = localStorage.getItem(key);
-      if (!cachedData) return null;
+  const loadNFTsFromCache = useCallback(
+    (key: string, ignoreExpiry = false): NFTMetadata[] | null => {
+      try {
+        const cachedData = localStorage.getItem(key);
+        if (!cachedData) {
+          console.log(`No cached data found for key: ${key}`);
+          return null;
+        }
 
-      const timestamp = localStorage.getItem(CACHE_TIMESTAMP_KEY);
-      if (!timestamp) return null;
+        const timestamp = localStorage.getItem(CACHE_TIMESTAMP_KEY);
+        if (!timestamp) {
+          console.log(`No timestamp found for cached data with key: ${key}`);
+          return null;
+        }
 
-      // Check if cache is expired
-      const cacheTime = parseInt(timestamp, 10);
-      const now = Date.now();
-      if (now - cacheTime > CACHE_EXPIRY_TIME) {
-        console.log("Cache expired, will fetch fresh data");
+        // Check if cache is expired (unless we're ignoring expiry)
+        if (!ignoreExpiry) {
+          const cacheTime = parseInt(timestamp, 10);
+          const now = Date.now();
+          if (now - cacheTime > CACHE_EXPIRY_TIME) {
+            console.log(`Cache expired for key: ${key}, will fetch fresh data`);
+            return null;
+          }
+        }
+
+        const nfts = JSON.parse(cachedData) as NFTMetadata[];
+        console.log(
+          `Loaded ${nfts.length} NFTs from cache with key: ${key}${
+            ignoreExpiry ? " (ignoring expiry)" : ""
+          }`
+        );
+        return nfts;
+      } catch (error) {
+        console.error(`Error loading NFTs from cache: ${error}`);
         return null;
       }
-
-      const nfts = JSON.parse(cachedData) as NFTMetadata[];
-      console.log(`Loaded ${nfts.length} NFTs from cache with key: ${key}`);
-      return nfts;
-    } catch (error) {
-      console.error(`Error loading NFTs from cache: ${error}`);
-      return null;
-    }
-  }, []);
+    },
+    []
+  );
 
   // Function to preload Base NFTs with improved caching
-  const preloadBaseNFTs = useCallback(async () => {
-    // If we already have NFTs loaded, no need to reload
-    if (nftMetadata.length > 0) {
-      console.log("Base NFTs already loaded in memory, skipping fetch");
-      updateProgressIncremental(1, 100, 1000);
-      return;
-    }
-
-    // Mark that we've attempted to load NFTs
-    nftLoadAttemptedRef.current = true;
-
-    console.log("Loading Base NFTs for transition...");
-    setTransitionLoadingProgress(1);
-
-    // Start incremental progress update from 1% to 40%
-    updateProgressIncremental(1, 40, 1000);
-
-    // Try to load from cache first
-    const cachedNFTs = loadNFTsFromCache(BASE_NFTS_CACHE_KEY);
-    if (cachedNFTs && cachedNFTs.length > 0) {
-      console.log("Using cached Base NFTs");
-      setNftMetadata(cachedNFTs);
-      updateProgressIncremental(40, 100, 500);
-
-      // Wait for state update to propagate
-      await new Promise<void>((resolve) => {
-        // Use a small timeout to ensure the state update has been processed
-        setTimeout(() => {
-          console.log(
-            `State updated with ${cachedNFTs.length} cached Base NFTs`
-          );
-          resolve();
-        }, 50);
-      });
-
-      return;
-    }
-
-    // If not in cache, fetch from API
-    try {
-      console.log("Fetching Base NFTs from API");
-      const baseNFTs = await fetchNFTsFromGrove(
-        COLLECTION_ADDRESS,
-        84532,
-        "ERC721"
-      );
-
-      // Update progress from 40% to 80%
-      updateProgressIncremental(40, 80, 500);
-
-      if (baseNFTs.length > 0) {
-        // Save to state and cache
-        setNftMetadata(baseNFTs);
-        saveNFTsToCache(BASE_NFTS_CACHE_KEY, baseNFTs);
-        console.log("Base NFTs loaded successfully:", baseNFTs.length);
-        updateProgressIncremental(80, 100, 500);
-
-        // Wait for state update to propagate
-        await new Promise<void>((resolve) => {
-          // Use a small timeout to ensure the state update has been processed
-          setTimeout(() => {
-            console.log(
-              `State updated with ${baseNFTs.length} fetched Base NFTs`
-            );
-            resolve();
-          }, 50);
-        });
-
+  const preloadBaseNFTs = useCallback(
+    async (forceRefresh = false) => {
+      // If we already have NFTs loaded and not forcing a refresh, no need to reload
+      if (nftMetadata.length > 0 && !forceRefresh) {
+        console.log("Base NFTs already loaded in memory, skipping fetch");
+        updateProgressIncremental(1, 100, 1000);
         return;
+      }
+
+      // Mark that we've attempted to load NFTs
+      nftLoadAttemptedRef.current = true;
+
+      console.log(
+        `Loading Base NFTs for transition... ${
+          forceRefresh ? "(forced refresh)" : ""
+        }`
+      );
+      setTransitionLoadingProgress(1);
+
+      // Start incremental progress update from 1% to 40%
+      updateProgressIncremental(1, 40, 1000);
+
+      // Try to load from cache first if not forcing a refresh
+      if (!forceRefresh) {
+        const cachedNFTs = loadNFTsFromCache(BASE_NFTS_CACHE_KEY);
+        if (cachedNFTs && cachedNFTs.length > 0) {
+          console.log("Using cached Base NFTs");
+          setNftMetadata(cachedNFTs);
+          updateProgressIncremental(40, 100, 500);
+
+          // Wait for state update to propagate
+          await new Promise<void>((resolve) => {
+            // Use a small timeout to ensure the state update has been processed
+            setTimeout(() => {
+              console.log(
+                `State updated with ${cachedNFTs.length} cached Base NFTs`
+              );
+              resolve();
+            }, 50);
+          });
+
+          return;
+        }
       } else {
-        console.error("No Base NFTs were returned from fetchNFTsFromGrove");
+        console.log("Bypassing cache for forced refresh");
+      }
+
+      // If not in cache or forcing refresh, fetch from API
+      try {
+        console.log("Fetching Base NFTs from API");
+        const baseNFTs = await fetchNFTsFromGrove(
+          COLLECTION_ADDRESS,
+          84532,
+          "ERC721"
+        );
+
+        // Update progress from 40% to 80%
+        updateProgressIncremental(40, 80, 500);
+
+        if (baseNFTs.length > 0) {
+          // Save to state and cache
+          setNftMetadata(baseNFTs);
+          saveNFTsToCache(BASE_NFTS_CACHE_KEY, baseNFTs);
+          console.log("Base NFTs loaded successfully:", baseNFTs.length);
+          updateProgressIncremental(80, 100, 500);
+
+          // Wait for state update to propagate
+          await new Promise<void>((resolve) => {
+            // Use a small timeout to ensure the state update has been processed
+            setTimeout(() => {
+              console.log(
+                `State updated with ${baseNFTs.length} fetched Base NFTs`
+              );
+              resolve();
+            }, 50);
+          });
+
+          return;
+        } else {
+          console.error("No Base NFTs were returned from fetchNFTsFromGrove");
+
+          // Try to use previously cached NFTs even if they're expired, but not if forcing refresh
+          if (!forceRefresh) {
+            const oldCachedNFTs = loadNFTsFromCache(BASE_NFTS_CACHE_KEY, true); // true = ignore expiry
+            if (oldCachedNFTs && oldCachedNFTs.length > 0) {
+              console.log("Using expired cached Base NFTs as fallback");
+              setNftMetadata(oldCachedNFTs);
+              updateProgressIncremental(80, 100, 500);
+
+              // Wait for state update to propagate
+              await new Promise<void>((resolve) => {
+                // Use a small timeout to ensure the state update has been processed
+                setTimeout(() => {
+                  console.log(
+                    `State updated with ${oldCachedNFTs.length} expired cached Base NFTs`
+                  );
+                  resolve();
+                }, 50);
+              });
+
+              return;
+            }
+          }
+
+          throw new Error("No Base NFTs available and no cache found");
+        }
+      } catch (error) {
+        console.error("Error loading Base NFTs:", error);
 
         // Try to use previously cached NFTs even if they're expired
-        const oldCachedNFTs = loadNFTsFromCache(BASE_NFTS_CACHE_KEY);
+        const oldCachedNFTs = loadNFTsFromCache(BASE_NFTS_CACHE_KEY, true); // true = ignore expiry
         if (oldCachedNFTs && oldCachedNFTs.length > 0) {
-          console.log("Using expired cached Base NFTs as fallback");
+          console.log("Using expired cached Base NFTs as fallback after error");
           setNftMetadata(oldCachedNFTs);
           updateProgressIncremental(80, 100, 500);
 
@@ -190,7 +278,7 @@ export function useTransitions({
             // Use a small timeout to ensure the state update has been processed
             setTimeout(() => {
               console.log(
-                `State updated with ${oldCachedNFTs.length} expired cached Base NFTs`
+                `State updated with ${oldCachedNFTs.length} expired cached Base NFTs after error`
               );
               resolve();
             }, 50);
@@ -199,120 +287,138 @@ export function useTransitions({
           return;
         }
 
-        throw new Error("No Base NFTs available and no cache found");
+        // If all else fails, throw an error to prevent transition
+        throw new Error("Failed to load Base NFTs and no cache found");
       }
-    } catch (error) {
-      console.error("Error loading Base NFTs:", error);
-
-      // Try to use previously cached NFTs even if they're expired
-      const oldCachedNFTs = loadNFTsFromCache(BASE_NFTS_CACHE_KEY);
-      if (oldCachedNFTs && oldCachedNFTs.length > 0) {
-        console.log("Using expired cached Base NFTs as fallback after error");
-        setNftMetadata(oldCachedNFTs);
-        updateProgressIncremental(80, 100, 500);
-
-        // Wait for state update to propagate
-        await new Promise<void>((resolve) => {
-          // Use a small timeout to ensure the state update has been processed
-          setTimeout(() => {
-            console.log(
-              `State updated with ${oldCachedNFTs.length} expired cached Base NFTs after error`
-            );
-            resolve();
-          }, 50);
-        });
-
-        return;
-      }
-
-      // If all else fails, throw an error to prevent transition
-      throw new Error("Failed to load Base NFTs and no cache found");
-    }
-  }, [
-    nftMetadata.length,
-    setNftMetadata,
-    updateProgressIncremental,
-    loadNFTsFromCache,
-    saveNFTsToCache,
-  ]);
+    },
+    [
+      nftMetadata.length,
+      setNftMetadata,
+      updateProgressIncremental,
+      loadNFTsFromCache,
+      saveNFTsToCache,
+    ]
+  );
 
   // Function to preload Scroll NFTs with improved caching
-  const preloadScrollNFTs = useCallback(async () => {
-    // If we already have NFTs loaded, no need to reload
-    if (scrollNftMetadata.length > 0) {
-      console.log("Scroll NFTs already loaded in memory, skipping fetch");
-      updateProgressIncremental(1, 100, 1000);
-      return;
-    }
-
-    // Mark that we've attempted to load Scroll NFTs
-    scrollNftLoadAttemptedRef.current = true;
-
-    console.log("Loading Scroll NFTs for transition...");
-    setTransitionLoadingProgress(1);
-
-    // Start incremental progress update from 1% to 40%
-    updateProgressIncremental(1, 40, 1000);
-
-    // Try to load from cache first
-    const cachedNFTs = loadNFTsFromCache(SCROLL_NFTS_CACHE_KEY);
-    if (cachedNFTs && cachedNFTs.length > 0) {
-      console.log("Using cached Scroll NFTs");
-      setScrollNftMetadata(cachedNFTs);
-      updateProgressIncremental(40, 100, 500);
-
-      // Wait for state update to propagate
-      await new Promise<void>((resolve) => {
-        // Use a small timeout to ensure the state update has been processed
-        setTimeout(() => {
-          console.log(
-            `State updated with ${cachedNFTs.length} cached Scroll NFTs`
-          );
-          resolve();
-        }, 50);
-      });
-
-      return;
-    }
-
-    // If not in cache, fetch from API
-    try {
-      console.log("Fetching Scroll NFTs from API");
-      const scrollNFTs = await fetchNFTsFromGrove(
-        SCROLLIFY_ORIGINALS_ADDRESS,
-        534351,
-        "ERC721"
-      );
-
-      // Update progress from 40% to 80%
-      updateProgressIncremental(40, 80, 500);
-
-      if (scrollNFTs.length > 0) {
-        // Save to state and cache
-        setScrollNftMetadata(scrollNFTs);
-        saveNFTsToCache(SCROLL_NFTS_CACHE_KEY, scrollNFTs);
-        console.log("Scroll NFTs loaded successfully:", scrollNFTs.length);
-        updateProgressIncremental(80, 100, 500);
-
-        // Wait for state update to propagate
-        await new Promise<void>((resolve) => {
-          // Use a small timeout to ensure the state update has been processed
-          setTimeout(() => {
-            console.log(
-              `State updated with ${scrollNFTs.length} fetched Scroll NFTs`
-            );
-            resolve();
-          }, 50);
-        });
-
+  const preloadScrollNFTs = useCallback(
+    async (forceRefresh = false) => {
+      // If we already have NFTs loaded and not forcing a refresh, no need to reload
+      if (scrollNftMetadata.length > 0 && !forceRefresh) {
+        console.log("Scroll NFTs already loaded in memory, skipping fetch");
+        updateProgressIncremental(1, 100, 1000);
         return;
+      }
+
+      // Mark that we've attempted to load Scroll NFTs
+      scrollNftLoadAttemptedRef.current = true;
+
+      console.log(
+        `Loading Scroll NFTs for transition... ${
+          forceRefresh ? "(forced refresh)" : ""
+        }`
+      );
+      setTransitionLoadingProgress(1);
+
+      // Start incremental progress update from 1% to 40%
+      updateProgressIncremental(1, 40, 1000);
+
+      // Try to load from cache first if not forcing a refresh
+      if (!forceRefresh) {
+        const cachedNFTs = loadNFTsFromCache(SCROLL_NFTS_CACHE_KEY);
+        if (cachedNFTs && cachedNFTs.length > 0) {
+          console.log("Using cached Scroll NFTs");
+          setScrollNftMetadata(cachedNFTs);
+          updateProgressIncremental(40, 100, 500);
+
+          // Wait for state update to propagate
+          await new Promise<void>((resolve) => {
+            // Use a small timeout to ensure the state update has been processed
+            setTimeout(() => {
+              console.log(
+                `State updated with ${cachedNFTs.length} cached Scroll NFTs`
+              );
+              resolve();
+            }, 50);
+          });
+
+          return;
+        }
       } else {
-        console.error("No Scroll NFTs were returned from fetchNFTsFromGrove");
+        console.log("Bypassing cache for forced refresh");
+      }
+
+      // If not in cache, fetch from API
+      try {
+        console.log("Fetching Scroll NFTs from API");
+        const scrollNFTs = await fetchNFTsFromGrove(
+          SCROLLIFY_ORIGINALS_ADDRESS,
+          534351,
+          "ERC721"
+        );
+
+        // Update progress from 40% to 80%
+        updateProgressIncremental(40, 80, 500);
+
+        if (scrollNFTs.length > 0) {
+          // Save to state and cache
+          setScrollNftMetadata(scrollNFTs);
+          saveNFTsToCache(SCROLL_NFTS_CACHE_KEY, scrollNFTs);
+          console.log("Scroll NFTs loaded successfully:", scrollNFTs.length);
+          updateProgressIncremental(80, 100, 500);
+
+          // Wait for state update to propagate
+          await new Promise<void>((resolve) => {
+            // Use a small timeout to ensure the state update has been processed
+            setTimeout(() => {
+              console.log(
+                `State updated with ${scrollNFTs.length} fetched Scroll NFTs`
+              );
+              resolve();
+            }, 50);
+          });
+
+          return;
+        } else {
+          console.error("No Scroll NFTs were returned from fetchNFTsFromGrove");
+
+          // Try to use previously cached NFTs even if they're expired, but not if forcing refresh
+          if (!forceRefresh) {
+            const oldCachedNFTs = loadNFTsFromCache(
+              SCROLL_NFTS_CACHE_KEY,
+              true
+            ); // true = ignore expiry
+            if (oldCachedNFTs && oldCachedNFTs.length > 0) {
+              console.log("Using expired cached Scroll NFTs as fallback");
+              setScrollNftMetadata(oldCachedNFTs);
+              updateProgressIncremental(80, 100, 500);
+
+              // Wait for state update to propagate
+              await new Promise<void>((resolve) => {
+                // Use a small timeout to ensure the state update has been processed
+                setTimeout(() => {
+                  console.log(
+                    `State updated with ${oldCachedNFTs.length} expired cached Scroll NFTs`
+                  );
+                  resolve();
+                }, 50);
+              });
+
+              return;
+            }
+          }
+
+          throw new Error("No Scroll NFTs available and no cache found");
+        }
+      } catch (error) {
+        console.error("Error loading Scroll NFTs:", error);
 
         // Try to use previously cached NFTs even if they're expired
-        const oldCachedNFTs = loadNFTsFromCache(SCROLL_NFTS_CACHE_KEY);
+        const oldCachedNFTs = loadNFTsFromCache(SCROLL_NFTS_CACHE_KEY, true); // true = ignore expiry
         if (oldCachedNFTs && oldCachedNFTs.length > 0) {
-          console.log("Using expired cached Scroll NFTs as fallback");
+          console.log(
+            "Using expired cached Scroll NFTs as fallback after error"
+          );
           setScrollNftMetadata(oldCachedNFTs);
           updateProgressIncremental(80, 100, 500);
 
@@ -321,7 +427,7 @@ export function useTransitions({
             // Use a small timeout to ensure the state update has been processed
             setTimeout(() => {
               console.log(
-                `State updated with ${oldCachedNFTs.length} expired cached Scroll NFTs`
+                `State updated with ${oldCachedNFTs.length} expired cached Scroll NFTs after error`
               );
               resolve();
             }, 50);
@@ -330,42 +436,89 @@ export function useTransitions({
           return;
         }
 
-        throw new Error("No Scroll NFTs available and no cache found");
+        // If all else fails, throw an error to prevent transition
+        throw new Error("Failed to load Scroll NFTs and no cache found");
       }
-    } catch (error) {
-      console.error("Error loading Scroll NFTs:", error);
+    },
+    [
+      scrollNftMetadata.length,
+      setScrollNftMetadata,
+      updateProgressIncremental,
+      loadNFTsFromCache,
+      saveNFTsToCache,
+    ]
+  );
 
-      // Try to use previously cached NFTs even if they're expired
-      const oldCachedNFTs = loadNFTsFromCache(SCROLL_NFTS_CACHE_KEY);
-      if (oldCachedNFTs && oldCachedNFTs.length > 0) {
-        console.log("Using expired cached Scroll NFTs as fallback after error");
-        setScrollNftMetadata(oldCachedNFTs);
-        updateProgressIncremental(80, 100, 500);
+  // Add a new helper function to preload images
+  const preloadImages = useCallback(
+    async (nfts: NFTMetadata[], progressStart: number, progressEnd: number) => {
+      if (nfts.length === 0) return;
 
-        // Wait for state update to propagate
-        await new Promise<void>((resolve) => {
-          // Use a small timeout to ensure the state update has been processed
-          setTimeout(() => {
-            console.log(
-              `State updated with ${oldCachedNFTs.length} expired cached Scroll NFTs after error`
-            );
-            resolve();
-          }, 50);
+      console.log(`Preloading ${nfts.length} images...`);
+
+      // Create an array to track loading progress
+      const totalImages = nfts.length;
+      let loadedImages = 0;
+
+      // Function to update progress as images load
+      const updateImageProgress = () => {
+        loadedImages++;
+        const progressPercent = loadedImages / totalImages;
+        const currentProgress = Math.floor(
+          progressStart + (progressEnd - progressStart) * progressPercent
+        );
+        setTransitionLoadingProgress(currentProgress);
+        console.log(
+          `Image preload progress: ${loadedImages}/${totalImages} (${currentProgress}%)`
+        );
+      };
+
+      // Preload images in batches to avoid overwhelming the browser
+      const batchSize = 5;
+      const batches = Math.ceil(nfts.length / batchSize);
+
+      for (let i = 0; i < batches; i++) {
+        const startIdx = i * batchSize;
+        const endIdx = Math.min(startIdx + batchSize, nfts.length);
+        const batchNfts = nfts.slice(startIdx, endIdx);
+
+        // Create an array of promises for this batch
+        const batchPromises = batchNfts.map((nft) => {
+          return new Promise<void>((resolve) => {
+            const img = new Image();
+
+            img.onload = () => {
+              updateImageProgress();
+              resolve();
+            };
+
+            img.onerror = () => {
+              console.warn(`Failed to preload image for NFT ${nft.id}`);
+              updateImageProgress();
+              resolve(); // Resolve anyway to continue the process
+            };
+
+            // Get the image URL from the NFT
+            let imageUrl = nft.image;
+
+            // Handle IPFS URLs
+            if (imageUrl && imageUrl.startsWith("ipfs://")) {
+              imageUrl = imageUrl.replace("ipfs://", "https://ipfs.io/ipfs/");
+            }
+
+            // Set the source to start loading
+            img.src = imageUrl;
+          });
         });
 
-        return;
+        // Wait for this batch to complete before moving to the next
+        await Promise.all(batchPromises);
       }
 
-      // If all else fails, throw an error to prevent transition
-      throw new Error("Failed to load Scroll NFTs and no cache found");
-    }
-  }, [
-    scrollNftMetadata.length,
-    setScrollNftMetadata,
-    updateProgressIncremental,
-    loadNFTsFromCache,
-    saveNFTsToCache,
-  ]);
+      console.log("Image preloading complete");
+    },
+    []
+  );
 
   // Function to transition back to off-chain mode
   const transitionToOffChain = useCallback(async () => {
@@ -448,8 +601,7 @@ export function useTransitions({
       // Start loading NFTs first - this will throw if NFTs can't be loaded
       await preloadBaseNFTs();
 
-      // Verify we have NFTs before proceeding - use a direct check on the state
-      // This ensures we're using the latest state after preloadBaseNFTs completes
+      // Verify we have NFTs before proceeding
       if (nftMetadata.length === 0) {
         console.log(
           "nftMetadata is still empty after preloading, checking again..."
@@ -467,6 +619,12 @@ export function useTransitions({
       console.log(
         `Successfully loaded ${nftMetadata.length} Base NFTs, proceeding with transition`
       );
+
+      // Update progress to 60%
+      setTransitionLoadingProgress(60);
+
+      // Preload images before starting the visual transition
+      await preloadImages(nftMetadata, 60, 80);
 
       // Update progress to 80%
       setTransitionLoadingProgress(80);
@@ -539,6 +697,7 @@ export function useTransitions({
     }
   }, [
     preloadBaseNFTs,
+    preloadImages,
     replaceAllRings,
     sceneRef,
     isOnChainModeRef,
@@ -560,8 +719,7 @@ export function useTransitions({
       // Start loading NFTs first - this will throw if NFTs can't be loaded
       await preloadScrollNFTs();
 
-      // Verify we have NFTs before proceeding - use a direct check on the state
-      // This ensures we're using the latest state after preloadScrollNFTs completes
+      // Verify we have NFTs before proceeding
       if (scrollNftMetadata.length === 0) {
         console.log(
           "scrollNftMetadata is still empty after preloading, checking again..."
@@ -579,6 +737,12 @@ export function useTransitions({
       console.log(
         `Successfully loaded ${scrollNftMetadata.length} Scroll NFTs, proceeding with transition`
       );
+
+      // Update progress to 60%
+      setTransitionLoadingProgress(60);
+
+      // Preload images before starting the visual transition
+      await preloadImages(scrollNftMetadata, 60, 80);
 
       // Update progress to 80%
       setTransitionLoadingProgress(80);
@@ -653,6 +817,7 @@ export function useTransitions({
     }
   }, [
     preloadScrollNFTs,
+    preloadImages,
     replaceAllRings,
     sceneRef,
     isOnChainModeRef,

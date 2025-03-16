@@ -8,6 +8,7 @@ import {
   COLLECTION_ADDRESS,
   EDITIONS_ADDRESS,
   SCROLLIFY_EDITIONS_ADDRESS,
+  SCROLLIFY_ORIGINALS_ADDRESS,
 } from "@/config/nft-config";
 import { OriginalNFT } from "@/types/nft-types";
 import { ethers } from "ethers";
@@ -65,6 +66,82 @@ const HigherBaseOriginalsABI = [
     stateMutability: "view",
     type: "function",
   },
+  {
+    inputs: [
+      {
+        internalType: "uint256",
+        name: "tokenId",
+        type: "uint256",
+      },
+    ],
+    name: "creators",
+    outputs: [
+      {
+        internalType: "address",
+        name: "",
+        type: "address",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "uint256",
+        name: "tokenId",
+        type: "uint256",
+      },
+    ],
+    name: "overlayTypes",
+    outputs: [
+      {
+        internalType: "enum HigherBaseOriginals.OverlayType",
+        name: "",
+        type: "uint8",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "string",
+        name: "groveUrl",
+        type: "string",
+      },
+    ],
+    name: "groveUrlToTokenId",
+    outputs: [
+      {
+        internalType: "uint256",
+        name: "",
+        type: "uint256",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "uint256",
+        name: "tokenId",
+        type: "uint256",
+      },
+    ],
+    name: "getTokenOverlayTypeString",
+    outputs: [
+      {
+        internalType: "string",
+        name: "",
+        type: "string",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
 ];
 
 // ABI for the HigherBaseEditions contract
@@ -90,12 +167,175 @@ export const HigherBaseEditionsABI = [
   },
   {
     inputs: [],
+    name: "originalsContract",
+    outputs: [
+      {
+        internalType: "address",
+        name: "",
+        type: "address",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "address",
+        name: "user",
+        type: "address",
+      },
+      {
+        internalType: "uint256",
+        name: "originalId",
+        type: "uint256",
+      },
+    ],
+    name: "hasUserMintedEdition",
+    outputs: [
+      {
+        internalType: "bool",
+        name: "",
+        type: "bool",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [],
     name: "editionPrice",
     outputs: [
       {
         internalType: "uint256",
         name: "",
         type: "uint256",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "uint256",
+        name: "originalId",
+        type: "uint256",
+      },
+    ],
+    name: "mintEdition",
+    outputs: [],
+    stateMutability: "payable",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "address",
+        name: "owner",
+        type: "address",
+      },
+    ],
+    name: "balanceOf",
+    outputs: [
+      {
+        internalType: "uint256",
+        name: "",
+        type: "uint256",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "address",
+        name: "owner",
+        type: "address",
+      },
+      {
+        internalType: "uint256",
+        name: "index",
+        type: "uint256",
+      },
+    ],
+    name: "tokenOfOwnerByIndex",
+    outputs: [
+      {
+        internalType: "uint256",
+        name: "",
+        type: "uint256",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "uint256",
+        name: "tokenId",
+        type: "uint256",
+      },
+    ],
+    name: "originalTokenId",
+    outputs: [
+      {
+        internalType: "uint256",
+        name: "",
+        type: "uint256",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [],
+    name: "defaultMaxEditions",
+    outputs: [
+      {
+        internalType: "uint256",
+        name: "",
+        type: "uint256",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "uint256",
+        name: "originalId",
+        type: "uint256",
+      },
+    ],
+    name: "maxEditions",
+    outputs: [
+      {
+        internalType: "uint256",
+        name: "",
+        type: "uint256",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "uint256",
+        name: "originalId",
+        type: "uint256",
+      },
+    ],
+    name: "originalExists",
+    outputs: [
+      {
+        internalType: "bool",
+        name: "",
+        type: "bool",
       },
     ],
     stateMutability: "view",
@@ -259,6 +499,25 @@ export const ScrollifyEditionsABI = [
         type: "uint256",
       },
     ],
+    name: "originalExists",
+    outputs: [
+      {
+        internalType: "bool",
+        name: "",
+        type: "bool",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "uint256",
+        name: "originalId",
+        type: "uint256",
+      },
+    ],
     name: "mintEdition",
     outputs: [],
     stateMutability: "payable",
@@ -267,18 +526,78 @@ export const ScrollifyEditionsABI = [
 ];
 
 // Create a public client for Base Sepolia
-const publicClient = createPublicClient({
+const basePublicClient = createPublicClient({
   chain: baseSepolia,
   transport: http(),
 });
 
-// Helper function to create contract instance
-function getContractInstance() {
+// Create a public client for Scroll Sepolia
+const scrollPublicClient = createPublicClient({
+  chain: {
+    id: 534351,
+    name: 'Scroll Sepolia',
+    network: 'scroll-sepolia',
+    nativeCurrency: {
+      decimals: 18,
+      name: 'Ether',
+      symbol: 'ETH',
+    },
+    rpcUrls: {
+      default: { http: ['https://sepolia-rpc.scroll.io/'] },
+      public: { http: ['https://sepolia-rpc.scroll.io/'] },
+    },
+  },
+  transport: http('https://sepolia-rpc.scroll.io/'),
+});
+
+// Helper function to create Base originals contract instance
+function getBaseOriginalsContractInstance() {
+  console.log(`Using Base originals contract at address: ${COLLECTION_ADDRESS}`);
   return getContract({
     address: COLLECTION_ADDRESS as `0x${string}`,
     abi: HigherBaseOriginalsABI,
-    client: publicClient,
+    client: basePublicClient,
   });
+}
+
+// Helper function to create Base editions contract instance
+function getBaseEditionsContractInstance() {
+  console.log(`Using Base editions contract at address: ${EDITIONS_ADDRESS}`);
+  return getContract({
+    address: EDITIONS_ADDRESS as `0x${string}`,
+    abi: HigherBaseEditionsABI,
+    client: basePublicClient,
+  });
+}
+
+// Helper function to create Scroll originals contract instance
+function getScrollOriginalsContractInstance() {
+  console.log(`Using Scroll originals contract at address: ${SCROLLIFY_ORIGINALS_ADDRESS}`);
+  return getContract({
+    address: SCROLLIFY_ORIGINALS_ADDRESS as `0x${string}`,
+    abi: ScrollifyOriginalsABI,
+    client: scrollPublicClient,
+  });
+}
+
+// Helper function to create Scroll editions contract instance
+function getScrollEditionsContractInstance() {
+  console.log(`Using Scroll editions contract at address: ${SCROLLIFY_EDITIONS_ADDRESS}`);
+  return getContract({
+    address: SCROLLIFY_EDITIONS_ADDRESS as `0x${string}`,
+    abi: ScrollifyEditionsABI,
+    client: scrollPublicClient,
+  });
+}
+
+// Helper function to get the appropriate originals contract instance
+function getOriginalsContractInstance(isScroll = false) {
+  return isScroll ? getScrollOriginalsContractInstance() : getBaseOriginalsContractInstance();
+}
+
+// Helper function to get the appropriate editions contract instance
+function getEditionsContractInstance(isScroll = false) {
+  return isScroll ? getScrollEditionsContractInstance() : getBaseEditionsContractInstance();
 }
 
 // Helper function to fetch and parse IPFS metadata
@@ -407,24 +726,91 @@ export function getFullGroveUrl(hash: string): string {
 }
 
 // Function to get original NFT data by ID
-export async function getOriginalById(id: number): Promise<OriginalNFT> {
+export async function getOriginalById(id: number, isScroll = false): Promise<OriginalNFT> {
   try {
-    // Create a contract instance
-    const contract = getContractInstance();
+    let tokenURI: string;
+    let creator: string = "0x0000000000000000000000000000000000000000";
+    let overlayType: string = "none";
 
-    // Get the token URI
-    const tokenURI = (await contract.read.tokenURI([BigInt(id)])) as string;
-    console.log(`Token URI for ID ${id}:`, tokenURI);
+    if (isScroll) {
+      // For Scroll, use a different approach since the ABI might be different
+      // Create a provider for Scroll Sepolia
+      const provider = new ethers.JsonRpcProvider("https://sepolia-rpc.scroll.io/");
+      
+      // Create contract instance with minimal ABI that just has the functions we need
+      const contract = new ethers.Contract(
+        SCROLLIFY_ORIGINALS_ADDRESS,
+        [
+          {
+            inputs: [{ internalType: "uint256", name: "tokenId", type: "uint256" }],
+            name: "tokenURI",
+            outputs: [{ internalType: "string", name: "", type: "string" }],
+            stateMutability: "view",
+            type: "function",
+          },
+          {
+            inputs: [{ internalType: "uint256", name: "tokenId", type: "uint256" }],
+            name: "ownerOf",
+            outputs: [{ internalType: "address", name: "", type: "address" }],
+            stateMutability: "view",
+            type: "function",
+          }
+        ],
+        provider
+      );
+      
+      // Get the token URI
+      tokenURI = await contract.tokenURI(id);
+      console.log(`Token URI for Scroll ID ${id}:`, tokenURI);
+      
+      // For Scroll, we might not have a creators function, so use a default value
+      creator = "0x0000000000000000000000000000000000000000";
+      
+      // For Scroll, we might not have overlay types, so use a default value
+      overlayType = "none";
+    } else {
+      // For Base, use the existing approach
+      // Create a contract instance
+      const contract = getOriginalsContractInstance(isScroll);
+
+      // Get the token URI
+      tokenURI = (await contract.read.tokenURI([BigInt(id)])) as string;
+      console.log(`Token URI for ID ${id}:`, tokenURI);
+
+      // Get the creator address
+      creator = (await contract.read.creators([BigInt(id)])) as string;
+      console.log(`Creator for ID ${id}:`, creator);
+
+      // Get the overlay type string directly from the contract
+      try {
+        overlayType = await contract.read.getTokenOverlayTypeString([BigInt(id)]) as string;
+        console.log(`Overlay type string for ID ${id}:`, overlayType);
+      } catch (error) {
+        console.warn(`Error getting overlay type string for ID ${id}:`, error);
+        
+        // Fallback to manual conversion if the function call fails
+        try {
+          const overlayTypeEnum = Number(await contract.read.overlayTypes([BigInt(id)]));
+          console.log(`Overlay type enum for ID ${id}:`, overlayTypeEnum);
+          
+          if (overlayTypeEnum === 0) overlayType = "higher";
+          else if (overlayTypeEnum === 1) overlayType = "base";
+          else if (overlayTypeEnum === 2) overlayType = "dickbuttify";
+        } catch (enumError) {
+          console.warn(`Error getting overlay type enum for ID ${id}:`, enumError);
+        }
+      }
+    }
 
     // Check if the tokenURI contains a Grove URL directly
     if (tokenURI.includes("api.grove.storage")) {
       const hash = extractGroveHash(tokenURI);
       return {
         tokenId: id,
-        creator: "0x1234...5678", // Default creator
+        creator,
         groveUrl: hash || "",
         tokenURI,
-        overlayType: "none",
+        overlayType,
         editionCount: 0,
       };
     }
@@ -446,18 +832,11 @@ export async function getOriginalById(id: number): Promise<OriginalNFT> {
 
       return {
         tokenId: id,
-        creator:
-          typeof metadata.creator === "string"
-            ? metadata.creator
-            : "0x1234...5678", // Use metadata.creator if available
+        creator,
         groveUrl,
         tokenURI,
-        overlayType:
-          typeof metadata.overlayType === "string"
-            ? metadata.overlayType
-            : "none",
-        editionCount:
-          typeof metadata.editionCount === "number" ? metadata.editionCount : 0,
+        overlayType,
+        editionCount: await getCurrentEditionsMinted(id),
       };
     } catch (metadataError) {
       console.error(`Error fetching metadata for token ${id}:`, metadataError);
@@ -468,11 +847,11 @@ export async function getOriginalById(id: number): Promise<OriginalNFT> {
         if (hash) {
           return {
             tokenId: id,
-            creator: "0x1234...5678",
+            creator,
             groveUrl: hash,
             tokenURI,
-            overlayType: "none",
-            editionCount: 0,
+            overlayType,
+            editionCount: await getCurrentEditionsMinted(id),
           };
         }
       }
@@ -499,7 +878,7 @@ export async function getOriginalById(id: number): Promise<OriginalNFT> {
 export async function isContractReady(): Promise<boolean> {
   try {
     // Create a contract instance
-    const contract = getContractInstance();
+    const contract = getOriginalsContractInstance();
 
     // Try to call totalSupply to check if the contract is accessible
     const totalSupply = await contract.read.totalSupply();
@@ -513,224 +892,342 @@ export async function isContractReady(): Promise<boolean> {
   }
 }
 
+// Function to check if a user has already minted an edition for a specific original
+export async function hasUserMintedEdition(
+  userAddress: string,
+  originalId: number,
+  isScroll = false
+): Promise<boolean> {
+  try {
+    if (isScroll) {
+      // For Scroll, use a direct approach with ethers.js
+      const provider = new ethers.JsonRpcProvider("https://sepolia-rpc.scroll.io/");
+      
+      // Create contract instance with minimal ABI
+      const contract = new ethers.Contract(
+        SCROLLIFY_EDITIONS_ADDRESS,
+        [
+          {
+            inputs: [
+              { internalType: "address", name: "user", type: "address" },
+              { internalType: "uint256", name: "originalId", type: "uint256" }
+            ],
+            name: "hasMinted",
+            outputs: [{ internalType: "bool", name: "", type: "bool" }],
+            stateMutability: "view",
+            type: "function",
+          }
+        ],
+        provider
+      );
+      
+      try {
+        // Try to call the hasMinted function directly
+        console.log(`Checking if user ${userAddress} has minted Scroll original ${originalId}`);
+        const hasMinted = await contract.hasMinted(userAddress, originalId);
+        console.log(`User ${userAddress} has minted Scroll original ${originalId}: ${hasMinted}`);
+        
+        return hasMinted;
+      } catch (error) {
+        console.warn(`Error checking if user has minted Scroll original ${originalId}:`, error);
+        
+        // If the function call fails, assume they haven't minted to allow them to try
+        console.log(`Assuming user ${userAddress} has not minted Scroll original ${originalId} due to error`);
+        return false;
+      }
+    } else {
+      // For Base, use the existing approach
+      // Get the contract instance
+      const contract = await getEditionsContract(isScroll);
+      
+      // Call the hasUserMintedEdition function on the contract
+      console.log(`Checking if user ${userAddress} has minted Base original ${originalId}`);
+      const hasMinted = await contract.hasUserMintedEdition(userAddress, originalId);
+      console.log(`User ${userAddress} has minted Base original ${originalId}: ${hasMinted}`);
+      
+      return hasMinted;
+    }
+  } catch (error) {
+    console.error("Error checking if user has minted:", error);
+    
+    // If we can't check reliably, assume they haven't minted to allow them to try
+    console.log(`Assuming user ${userAddress} has not minted original ${originalId} due to error`);
+    return false;
+  }
+}
+
+// Function to get the max editions allowed for an original
+export async function getMaxEditionsForOriginal(
+  originalId: number,
+  isScroll = false
+): Promise<number> {
+  try {
+    if (isScroll) {
+      // For Scroll, we always use 100 as the max editions
+      console.log(`Using hardcoded max editions for Scroll original ${originalId}: 100`);
+      return 100;
+    } else {
+      // For Base, use the existing approach
+      // Get the contract instance
+      const contract = await getEditionsContract(isScroll);
+      
+      // First check if there's a specific max set for this original
+      console.log(`Getting max editions for Base original ${originalId}`);
+      try {
+        const maxForOriginal = await contract.maxEditions(originalId);
+        
+        // If specific max is set, return it
+        if (maxForOriginal.toString() !== "0") {
+          console.log(`Max editions for Base original ${originalId}: ${maxForOriginal.toString()}`);
+          return Number(maxForOriginal.toString());
+        }
+      } catch (error) {
+        console.warn(`Error getting specific max editions for Base original ${originalId}:`, error);
+      }
+      
+      // If no specific max or error, get the default max editions
+      try {
+        const defaultMax = await contract.defaultMaxEditions();
+        console.log(`Default max editions for Base: ${defaultMax.toString()}`);
+        return Number(defaultMax.toString());
+      } catch (error) {
+        console.warn(`Error getting default max editions for Base:`, error);
+        
+        // If we can't get the default max, return a hardcoded value
+        const hardcodedDefault = 100;
+        console.log(`Using hardcoded default max editions for Base: ${hardcodedDefault}`);
+        return hardcodedDefault;
+      }
+    }
+  } catch (error) {
+    console.error("Error getting max editions:", error);
+    
+    // If all else fails, return a hardcoded value
+    return 100;
+  }
+}
+
+export async function getCurrentEditionsMinted(
+  originalId: number,
+  isScroll = false
+): Promise<number> {
+  try {
+    if (isScroll) {
+      // For Scroll, use a direct approach with ethers.js
+      const provider = new ethers.JsonRpcProvider("https://sepolia-rpc.scroll.io/");
+      
+      // Create contract instance with minimal ABI
+      const contract = new ethers.Contract(
+        SCROLLIFY_EDITIONS_ADDRESS,
+        [
+          {
+            inputs: [{ internalType: "uint256", name: "originalId", type: "uint256" }],
+            name: "editionsMinted",
+            outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+            stateMutability: "view",
+            type: "function",
+          }
+        ],
+        provider
+      );
+      
+      // Call the editionsMinted function directly
+      console.log(`Getting editions minted for Scroll original ${originalId}`);
+      const count = await contract.editionsMinted(originalId);
+      const editionsMinted = Number(count);
+      console.log(`Editions minted for Scroll original ${originalId}: ${editionsMinted}`);
+      
+      return editionsMinted;
+    } else {
+      // For Base, use the existing approach
+      // Get the contract instance
+      const contract = await getEditionsContract(isScroll);
+      
+      // Call the editionsMinted function on the contract
+      console.log(`Getting editions minted for Base original ${originalId}`);
+      const editionsMinted = await contract.editionsMinted(originalId);
+      console.log(`Editions minted for Base original ${originalId}: ${editionsMinted}`);
+      
+      return Number(editionsMinted.toString());
+    }
+  } catch (error) {
+    console.error("Error getting editions minted:", error);
+    
+    // If we can't check reliably, assume 0 editions have been minted
+    console.log(`Assuming 0 editions minted for original ${originalId} due to error`);
+    return 0;
+  }
+}
+
+// Function to check if an original NFT exists
+export async function originalExists(originalId: number, isScroll = false): Promise<boolean> {
+  try {
+    if (isScroll) {
+      // For Scroll, use a different approach since the ABI might be different
+      // Create a provider for Scroll Sepolia
+      const provider = new ethers.JsonRpcProvider("https://sepolia-rpc.scroll.io/");
+      
+      // Create contract instance with minimal ABI that just has the function we need
+      const contract = new ethers.Contract(
+        SCROLLIFY_ORIGINALS_ADDRESS,
+        [
+          {
+            inputs: [{ internalType: "uint256", name: "tokenId", type: "uint256" }],
+            name: "ownerOf",
+            outputs: [{ internalType: "address", name: "", type: "address" }],
+            stateMutability: "view",
+            type: "function",
+          }
+        ],
+        provider
+      );
+      
+      // Try to get the owner of the original NFT
+      await contract.ownerOf(originalId);
+      
+      // If we get here, the original exists
+      return true;
+    } else {
+      // For Base, use the existing approach
+      // Create a contract instance for the originals contract directly
+      const contract = getOriginalsContractInstance(isScroll);
+
+      // Try to get the owner of the original NFT
+      // If it exists, this will return an address
+      // If it doesn't exist, it will throw an error
+      await contract.read.ownerOf([BigInt(originalId)]);
+
+      // If we get here, the original exists
+      return true;
+    }
+  } catch (error) {
+    console.error(`Error checking if original #${originalId} exists:`, error);
+    // If there's an error, the original probably doesn't exist
+    return false;
+  }
+}
+
 // Function to mint an edition
 export async function mintEdition(
   originalId: number,
-  signer: ethers.Signer,
-  chainId: number = 84532 // Default to Base Sepolia
-) {
+  isScrollEdition: boolean = false
+): Promise<{ success: boolean; message: string; txHash?: string }> {
   try {
-    console.log(
-      `Minting edition for original ID ${originalId} on chain ${chainId}`
-    );
+    console.log(`Minting edition for original ID: ${originalId}`);
 
-    // Determine which contract to use based on chainId
-    const contractAddress =
-      chainId === 534351 ? SCROLLIFY_EDITIONS_ADDRESS : EDITIONS_ADDRESS;
-
-    const abi =
-      chainId === 534351 ? ScrollifyEditionsABI : HigherBaseEditionsABI;
-
-    console.log(`Using contract address: ${contractAddress}`);
-
-    // Create contract instance
-    const contract = new ethers.Contract(contractAddress, abi, signer);
-
-    // Get the mint price - use hardcoded price for Scroll to avoid the editionPrice error
-    let mintPrice;
-    if (chainId === 534351) {
-      try {
-        // Try to get the price from the contract
-        mintPrice = await contract.editionPrice();
-        console.log(
-          `Mint price from contract: ${ethers.formatEther(mintPrice)} ETH`
-        );
-      } catch (error: unknown) {
-        console.error("Error getting mint price:", error);
-        // Fallback to hardcoded price if contract call fails
-        mintPrice = ethers.parseEther("0.005");
-        console.log(
-          `Using fallback mint price for Scroll: ${ethers.formatEther(
-            mintPrice
-          )} ETH`
-        );
-      }
-    } else {
-      try {
-        mintPrice = await contract.editionPrice();
-        console.log(
-          `Mint price from contract: ${ethers.formatEther(mintPrice)} ETH`
-        );
-      } catch (error: unknown) {
-        console.error("Error getting mint price:", error);
-        // Fallback to hardcoded price if contract call fails
-        mintPrice = ethers.parseEther("0.01"); // Base Sepolia price
-        console.log(
-          `Using fallback mint price: ${ethers.formatEther(mintPrice)} ETH`
-        );
-      }
+    // Check if the original exists
+    const exists = await originalExists(originalId, isScrollEdition);
+    if (!exists) {
+      return {
+        success: false,
+        message: "The original NFT does not exist",
+      };
     }
 
-    // For Scroll, check if the edition exists before trying to mint
-    if (chainId === 534351) {
-      try {
-        // Check how many editions have been minted for this original
-        const editionsMinted = await contract.editionsMinted(originalId);
-        console.log(
-          `Editions minted for original ID ${originalId}: ${editionsMinted}`
-        );
+    // Get the contract instance
+    const contract = await getEditionsContract(isScrollEdition);
+    
+    // Get the mint price
+    let mintPrice;
+    try {
+      mintPrice = await contract.editionPrice();
+      console.log(`Mint price: ${ethers.formatEther(mintPrice)} ETH`);
+    } catch (error) {
+      console.error("Error getting mint price:", error);
+      mintPrice = ethers.parseEther("0.01"); // Default to 0.01 ETH if we can't get the price
+      console.log(`Using default mint price: ${ethers.formatEther(mintPrice)} ETH`);
+    }
 
-        // Check if we've reached the max editions
-        if (editionsMinted >= 100) {
+    // Call the mintEdition function on the contract
+    console.log(`Calling mintEdition with originalId=${originalId} and value=${ethers.formatEther(mintPrice)} ETH`);
+    
+    // Log the contract address and ABI to verify
+    console.log(`Contract address: ${contract.target}`);
+    try {
+      // Try to log the contract methods
+      const methods = contract.interface.fragments.map((f: any) => f.name || 'unknown').filter(Boolean);
+      console.log(`Contract ABI methods: ${methods.join(', ')}`);
+    } catch (error) {
+      console.warn("Could not log contract methods:", error);
+    }
+    
+    // Ensure we're passing the originalId as a number
+    const originalIdNumber = Number(originalId);
+    console.log(`Converted originalId to number: ${originalIdNumber}`);
+    
+    // Check if the user has already minted this original
+    try {
+      // Get the signer's address directly
+      const signer = await getProvider().getSigner();
+      const userAddress = await signer.getAddress();
+      
+      if (userAddress) {
+        const hasMinted = await contract.hasUserMintedEdition(userAddress, originalIdNumber);
+        console.log(`User ${userAddress} has minted original ${originalIdNumber}: ${hasMinted}`);
+        if (hasMinted) {
           return {
             success: false,
-            error: `Maximum editions (100) already minted for original ID ${originalId}.`,
+            message: "You have already minted an edition for this original",
           };
         }
-      } catch (error: unknown) {
-        console.error(
-          `Error checking editions minted for original ID ${originalId}:`,
-          error
-        );
-        // This is not a critical error, we can still try to mint
       }
+    } catch (error) {
+      console.warn("Error checking if user has minted:", error);
+      // Continue even if we can't check this
     }
-
-    // Prepare transaction
-    console.log(
-      `Calling mintEdition with originalId: ${originalId} and value: ${ethers.formatEther(
-        mintPrice
-      )} ETH`
+    
+    // Try to use a more direct approach to call the contract
+    console.log(`Using BigInt for originalId: ${BigInt(originalIdNumber)}`);
+    
+    // Call the contract function with explicit parameters
+    const tx = await contract.mintEdition(
+      BigInt(originalIdNumber), // Convert to BigInt explicitly
+      {
+        value: mintPrice,
+        gasLimit: 500000, // Increase gas limit to be safe
+      }
     );
 
-    let tx;
+    console.log(`Transaction sent: ${tx.hash}`);
 
-    // For Scroll, the mintEdition function now takes just the originalId
-    if (chainId === 534351) {
-      tx = await contract.mintEdition(originalId, {
-        value: mintPrice,
-        gasLimit: 500000, // Higher gas limit for Scroll
-      });
-      console.log(`Transaction sent: ${tx.hash}`);
-    } else {
-      // For Base, use the normal contract method
-      tx = await contract.mintEdition(originalId, { value: mintPrice });
-      console.log(`Transaction sent: ${tx.hash}`);
-    }
+    // Wait for the transaction to be mined
+    const receipt = await tx.wait();
+    console.log(`Transaction confirmed: ${receipt.transactionHash}`);
 
-    try {
-      // Wait for transaction to be mined
-      const receipt = await tx.wait();
-      console.log(`Transaction confirmed: ${receipt.hash}`);
-
-      // Check if the transaction was successful
-      if (receipt.status === 0) {
-        throw new Error(
-          "Transaction failed on-chain. The contract reverted the transaction."
-        );
-      }
-
-      return {
-        success: true,
-        transactionHash: receipt.hash,
-        editionTokenId: null, // We don't get this back from the contract
-        originalTokenId: originalId,
-        chainId: chainId,
-      };
-    } catch (receiptError) {
-      console.error("Error getting transaction receipt:", receiptError);
-
-      // Type guard for receipt error
-      interface TransactionError {
-        receipt?: {
-          status: number;
-        };
-      }
-
-      // Check if the transaction was reverted
-      if (
-        receiptError &&
-        typeof receiptError === "object" &&
-        receiptError !== null &&
-        (receiptError as TransactionError).receipt?.status === 0
-      ) {
-        throw new Error(
-          "Transaction reverted on-chain. This could be because the NFT has already been minted or the contract doesn't recognize this original ID."
-        );
-      }
-
-      throw receiptError;
-    }
+    return {
+      success: true,
+      message: "Edition minted successfully!",
+      txHash: receipt.transactionHash,
+    };
   } catch (error: unknown) {
     console.error("Error minting edition:", error);
 
-    // Check for specific error types
-    if (isUserRejectionError(error)) {
-      return {
-        success: false,
-        error: "Transaction was rejected by the user.",
-      };
-    }
+    // Handle specific error messages
+    let errorMessage = "Failed to mint edition. Please try again.";
 
-    // Transaction reverted errors
-    if (
-      error instanceof Error &&
-      error.message &&
-      error.message.includes("reverted")
-    ) {
-      if (chainId === 534351) {
-        return {
-          success: false,
-          error:
-            "Transaction reverted on Scroll. This could be because the edition doesn't exist, has already been minted, or has reached its maximum supply.",
-        };
-      } else {
-        return {
-          success: false,
-          error:
-            "Transaction reverted. This could be because the NFT has already been minted or there's an issue with the contract.",
-        };
-      }
-    }
-
-    // Network errors
-    if (
-      error instanceof Error &&
-      error.message &&
-      (error.message.includes("network") ||
-        error.message.includes("chain") ||
-        error.message.includes("could not decode") ||
-        error.message.includes("missing revert data"))
-    ) {
-      return {
-        success: false,
-        error: `Please make sure you're connected to ${
-          chainId === 534351 ? "Scroll" : "Base"
-        } Sepolia network.`,
-      };
-    }
-
-    // Contract errors - likely an issue with the contract itself
-    if (
-      error instanceof Error &&
-      error.message &&
-      error.message.includes("call exception")
-    ) {
-      if (chainId === 534351) {
-        return {
-          success: false,
-          error:
-            "There was an issue with the Scroll contract. Please try again later or contact support.",
-        };
+    if (error instanceof Error && error.message) {
+      if (error.message.includes("Max editions reached")) {
+        errorMessage = "Maximum editions reached for this original";
+      } else if (error.message.includes("already minted")) {
+        errorMessage = "You have already minted an edition for this original";
+      } else if (error.message.includes("Insufficient payment")) {
+        errorMessage = "Insufficient payment for minting";
+      } else if (error.message.includes("Original NFT does not exist")) {
+        errorMessage = "The original NFT does not exist";
+      } else if (error.message.includes("user rejected transaction")) {
+        errorMessage = "Transaction was rejected by the user";
+      } else if (error.message.includes("insufficient funds")) {
+        errorMessage = "Insufficient funds in your wallet to mint this edition";
+      } else if (error.message.includes("network") || error.message.includes("chain")) {
+        errorMessage = isScrollEdition 
+          ? "Please make sure you're connected to Scroll Sepolia network"
+          : "Please make sure you're connected to Base Sepolia network";
       }
     }
 
     return {
       success: false,
-      error:
-        error instanceof Error
-          ? error.message
-          : "Unknown error occurred while minting.",
+      message: errorMessage,
     };
   }
 }
@@ -775,31 +1272,44 @@ export async function getAvailableScrollEditions(): Promise<number[]> {
       try {
         // Check how many editions have been minted for this original
         const editionsMinted = await contract.editionsMinted(i);
-        console.log(`Original ID ${i} has ${editionsMinted} editions minted`);
+        console.log(`Editions minted for original ID ${i}: ${editionsMinted}`);
 
-        // If less than 100 editions minted, this original ID is available
-        if (editionsMinted < 100) {
+        // If the original has been minted, add it to the available editions
+        if (editionsMinted > 0) {
           availableEditions.push(i);
         }
       } catch (error) {
-        console.error(
-          `Error checking editions minted for original ID ${i}:`,
-          error
-        );
-        // If we can't check, assume it's available (the contract will validate)
-        availableEditions.push(i);
+        console.error(`Error checking editions for original ID ${i}:`, error);
       }
     }
 
-    console.log(
-      `Available original IDs for minting on Scroll: ${availableEditions.join(
-        ", "
-      )}`
-    );
     return availableEditions;
   } catch (error) {
-    console.error("Error getting available editions on Scroll:", error);
-    // Return all IDs 1-16 as a fallback
-    return Array.from({ length: 16 }, (_, i) => i + 1);
+    console.error("Error fetching available Scroll editions:", error);
+    return [];
   }
+}
+
+// Function to get the editions contract instance
+export async function getEditionsContract(isScroll = false) {
+  const provider = getProvider();
+  const signer = await provider.getSigner();
+  
+  if (isScroll) {
+    console.log(`Getting Scroll editions contract at address: ${SCROLLIFY_EDITIONS_ADDRESS}`);
+    return new ethers.Contract(SCROLLIFY_EDITIONS_ADDRESS, ScrollifyEditionsABI, signer);
+  } else {
+    console.log(`Getting Base editions contract at address: ${EDITIONS_ADDRESS}`);
+    return new ethers.Contract(EDITIONS_ADDRESS, HigherBaseEditionsABI, signer);
+  }
+}
+
+// Function to get the provider
+export function getProvider() {
+  if (!window.ethereum) {
+    throw new Error(
+      "No Ethereum provider found. Please install MetaMask or another wallet."
+    );
+  }
+  return new ethers.BrowserProvider(window.ethereum as ethers.Eip1193Provider);
 }

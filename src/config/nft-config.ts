@@ -16,11 +16,13 @@ export const SCROLLIFY_ORIGINALS_ADDRESS =
 export const SCROLLIFY_EDITIONS_ADDRESS =
   "0xE8fF059Db1598dc98F002c16cD6da2B8Bd75bD24"; // Deployed on Scroll Sepolia
 
-// Collection address
-export const COLLECTION_ADDRESS = "0xf83BEE9560F7DBf5b103e8449d7869AF1E5EBD80"; // Higher Base Originals on Base Sepolia
+// Base Sepolia contract addresses
+export const COLLECTION_ADDRESS = "0xF90552377071C01B8922c4879eA9E20A39476998"; // Higher Base Originals on Base Sepolia
+export const EDITIONS_ADDRESS = "0x6A0E6D188cFca3FdCcB7b68352B849b133eD74C9"; // Higher Base Editions on Base Sepolia
 
-// Editions contract address
-export const EDITIONS_ADDRESS = "0xB01156C091Bc299dce13dab15c78b066a7ECAD59"; // Higher Base Editions on Base Sepolia
+// Base Mainnet address for hardcoded NFTs
+export const BASE_MAINNET_ADDRESS =
+  "0x5cc9287e2a2477ac9c7be24de3873f71cea036fd"; // Higher on Base Mainnet
 
 // Hardcoded NFT metadata for the initial experience
 export const NFT_METADATA: Record<number, HardcodedNFTMetadata> = {

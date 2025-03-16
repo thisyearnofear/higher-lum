@@ -4,44 +4,39 @@ import { useEffect, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
 import {
-  COLLECTION_ADDRESS,
-  NFT_METADATA,
   SCROLLIFY_ORIGINALS_ADDRESS,
   SCROLLIFY_EDITIONS_ADDRESS,
-  EDITIONS_ADDRESS,
 } from "@/config/nft-config";
 import { NFTType } from "@/types/nft-types";
 import { getBestImageUrl } from "@/services/nftService";
-import { getOriginalById } from "@/services/contract";
+import {
+  getOriginalById,
+  originalExists,
+  getCurrentEditionsMinted,
+} from "@/services/contract";
 import type { OriginalNFT } from "@/types/nft-types";
 import type { NFTMetadata } from "@/types/nft-types";
 import { EditionMinter } from "./EditionMinter";
 import { useAccount } from "wagmi";
 import { ethers } from "ethers";
 import { ScrollifyEditionsABI } from "@/services/contract";
-import { HigherBaseEditionsABI } from "@/services/contract";
+import { getMaxEditionsForOriginal } from "@/services/contract";
 
-interface NFTModalProps {
+interface ScrollNFTModalProps {
   imageIndex: number;
   isOpen: boolean;
   onClose: () => void;
-  isOnChainMode: boolean;
-  isOnChainScrollMode: boolean;
-  onChainNFTs: NFTMetadata[];
   scrollNFTs: NFTMetadata[];
   selectedNFTId?: string;
 }
 
-export function NFTModal({
+export function ScrollNFTModal({
   imageIndex,
   isOpen,
   onClose,
-  isOnChainMode,
-  isOnChainScrollMode,
-  onChainNFTs,
   scrollNFTs,
   selectedNFTId,
-}: NFTModalProps) {
+}: ScrollNFTModalProps) {
   const [mounted, setMounted] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const [originalData, setOriginalData] = useState<OriginalNFT | null>(null);
@@ -49,8 +44,10 @@ export function NFTModal({
   const [selectedNFT, setSelectedNFT] = useState<NFTMetadata | null>(null);
   const [mintError, setMintError] = useState<string | null>(null);
   const [editionCount, setEditionCount] = useState<number>(0);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { isConnected, chain } = useAccount();
+  const [isPollingEditions, setIsPollingEditions] = useState(false);
+  const { isConnected } = useAccount();
+  const [maxEditions, setMaxEditions] = useState<number>(100); // Scroll has 100 max editions
+  const [originalDoesExist, setOriginalDoesExist] = useState<boolean>(true);
 
   const handleClose = useCallback(() => {
     setIsClosing(true);
@@ -94,47 +91,16 @@ export function NFTModal({
 
     let metadata: NFTMetadata | undefined;
 
-    // For off-chain mode, use the hardcoded metadata
-    if (!isOnChainMode) {
-      // Use the hardcoded NFT metadata with 1-based indexing
-      const adjustedIndex = (imageIndex % 16) + 1;
-      const hardcodedNFT = NFT_METADATA[adjustedIndex];
-
-      // Convert from hardcoded format to NFTMetadata format
-      if (hardcodedNFT) {
-        metadata = {
-          id: adjustedIndex.toString(),
-          name: hardcodedNFT.title,
-          description: hardcodedNFT.description,
-          image: `/${hardcodedNFT.imageFile}`,
-          tokenId: hardcodedNFT.tokenId,
-          type: NFTType.EDITION,
-          attributes: [],
-          chainId: 0,
-          chainName: "Zora",
-          contractAddress: COLLECTION_ADDRESS,
-          isScrollNFT: false,
-          tokenURI: "",
-        };
-      }
-
-      setSelectedNFT(metadata || null);
-      return;
-    }
-
-    // Determine which NFT array to use based on mode
-    const nftsToUse = isOnChainScrollMode ? scrollNFTs : onChainNFTs;
-
     // Try to find the NFT by ID first if provided
     if (selectedNFTId) {
-      metadata = nftsToUse.find((nft) => nft.id === selectedNFTId);
+      metadata = scrollNFTs.find((nft) => nft.id === selectedNFTId);
     }
 
     // If no NFT found by ID or no ID provided, fall back to index
-    if (!metadata && nftsToUse.length > 0) {
+    if (!metadata && scrollNFTs.length > 0) {
       // Handle the case where imageIndex might be out of bounds
-      const adjustedIndex = imageIndex % nftsToUse.length;
-      metadata = nftsToUse[adjustedIndex];
+      const adjustedIndex = imageIndex % scrollNFTs.length;
+      metadata = scrollNFTs[adjustedIndex];
     }
 
     setSelectedNFT(metadata || null);
@@ -148,7 +114,7 @@ export function NFTModal({
         setIsLoading(false);
       }, 5000);
 
-      getOriginalById(metadata.tokenId)
+      getOriginalById(metadata.tokenId, true) // Pass true for isScroll
         .then((data) => {
           clearTimeout(fetchTimeout);
           setOriginalData(data);
@@ -159,39 +125,104 @@ export function NFTModal({
           setIsLoading(false);
         });
     }
-  }, [
-    isOpen,
-    imageIndex,
-    isOnChainMode,
-    isOnChainScrollMode,
-    onChainNFTs,
-    scrollNFTs,
-    selectedNFTId,
-  ]);
+  }, [isOpen, imageIndex, scrollNFTs, selectedNFTId]);
 
   // Function to get current edition count
   const getCurrentEditionCount = useCallback(async () => {
     if (!selectedNFT) return;
 
     try {
-      const provider = new ethers.JsonRpcProvider(
-        isOnChainScrollMode
-          ? "https://sepolia-rpc.scroll.io/"
-          : "https://sepolia.base.org"
-      );
+      setIsPollingEditions(true);
 
+      // Scroll Sepolia RPC
+      const rpcUrl = "https://sepolia-rpc.scroll.io/";
+      const contractAddress = SCROLLIFY_EDITIONS_ADDRESS;
+      const contractABI = ScrollifyEditionsABI;
+
+      console.log(`Polling edition count for NFT #${selectedNFT.id} on Scroll`);
+
+      const provider = new ethers.JsonRpcProvider(rpcUrl);
       const contract = new ethers.Contract(
-        isOnChainScrollMode ? SCROLLIFY_EDITIONS_ADDRESS : EDITIONS_ADDRESS,
-        isOnChainScrollMode ? ScrollifyEditionsABI : HigherBaseEditionsABI,
+        contractAddress,
+        contractABI,
         provider
       );
 
-      const count = await contract.editionsMinted(selectedNFT.id);
-      setEditionCount(Number(count));
+      // For original NFTs, we need to use the tokenId
+      const idToQuery =
+        selectedNFT.type === NFTType.ORIGINAL
+          ? selectedNFT.tokenId
+          : selectedNFT.originalId || selectedNFT.tokenId;
+
+      console.log(`Querying editionsMinted for ID: ${idToQuery}`);
+
+      // Check if the original exists
+      try {
+        const exists = await originalExists(idToQuery, true); // Pass true for isScroll
+        setOriginalDoesExist(exists);
+        console.log(`Original #${idToQuery} exists on Scroll: ${exists}`);
+
+        if (!exists) {
+          console.log(
+            `Original #${idToQuery} doesn't exist, setting edition count to 0`
+          );
+          setEditionCount(0);
+          setIsPollingEditions(false);
+          return;
+        }
+      } catch (error) {
+        console.warn(`Error checking if original #${idToQuery} exists:`, error);
+        // If the function call fails, assume the original exists
+        setOriginalDoesExist(true);
+      }
+
+      // Get the max editions for this original
+      try {
+        const maxForOriginal = await getMaxEditionsForOriginal(idToQuery, true); // Pass true for isScroll
+        setMaxEditions(maxForOriginal);
+        console.log(
+          `Max editions for original ID ${idToQuery}: ${maxForOriginal}`
+        );
+      } catch (error) {
+        console.warn(
+          `Error getting max editions for original ID ${idToQuery}:`,
+          error
+        );
+        // Use default value if we can't get from contract
+        setMaxEditions(100);
+      }
+
+      // Only query editions minted if the original exists
+      if (originalDoesExist) {
+        try {
+          const editionsMinted = await getCurrentEditionsMinted(
+            idToQuery,
+            true
+          ); // Pass true for isScroll
+          console.log(
+            `Edition count for NFT #${selectedNFT.id}: ${editionsMinted}`
+          );
+          setEditionCount(editionsMinted);
+        } catch (error) {
+          console.error(
+            `Error getting editionsMinted for ID ${idToQuery}:`,
+            error
+          );
+          // Keep the current count if there's an error
+        }
+      } else {
+        // If the original doesn't exist, set edition count to 0
+        console.log(
+          `Original #${idToQuery} doesn't exist, setting edition count to 0`
+        );
+        setEditionCount(0);
+      }
     } catch (error) {
       console.error("Error fetching edition count:", error);
+    } finally {
+      setIsPollingEditions(false);
     }
-  }, [selectedNFT, isOnChainScrollMode]);
+  }, [selectedNFT, originalDoesExist]);
 
   // Poll for edition count updates
   useEffect(() => {
@@ -201,8 +232,8 @@ export function NFTModal({
       // Initial fetch
       getCurrentEditionCount();
 
-      // Poll every 3 seconds while modal is open
-      pollInterval = setInterval(getCurrentEditionCount, 3000);
+      // Poll every 10 seconds while modal is open
+      pollInterval = setInterval(getCurrentEditionCount, 10000);
     }
 
     return () => {
@@ -218,6 +249,13 @@ export function NFTModal({
       getCurrentEditionCount();
     }
   }, [selectedNFT, getCurrentEditionCount]);
+
+  // Reset edition count when modal is closed
+  useEffect(() => {
+    if (!isOpen) {
+      setEditionCount(0);
+    }
+  }, [isOpen]);
 
   if (!mounted || (!isOpen && !isClosing)) return null;
 
@@ -253,14 +291,10 @@ export function NFTModal({
 
   const isOriginal = selectedNFT.type === NFTType.ORIGINAL;
 
-  // Determine the appropriate Zora URL based on the chain
+  // Determine the appropriate Zora URL
   const zoraUrl = isOriginal
     ? null
-    : isOnChainScrollMode
-    ? `https://zora.co/collect/scroll-sepolia:${SCROLLIFY_ORIGINALS_ADDRESS}/${selectedNFT.tokenId}`
-    : isOnChainMode
-    ? `https://zora.co/collect/base:${COLLECTION_ADDRESS}/${selectedNFT.tokenId}`
-    : `https://zora.co/collect/base:${selectedNFT.contractAddress}/${selectedNFT.tokenId}`;
+    : `https://zora.co/collect/scroll-sepolia:${SCROLLIFY_ORIGINALS_ADDRESS}/${selectedNFT.tokenId}`;
 
   const handleMintClick = () => {
     if (zoraUrl) {
@@ -271,8 +305,9 @@ export function NFTModal({
   // Get the best image URL to display
   const imageUrl = getBestImageUrl(selectedNFT);
 
-  // Determine the chain ID based on the mode
-  const chainId = isOnChainScrollMode ? 534351 : 84532;
+  // Calculate remaining editions
+  const remainingEditions = maxEditions - editionCount;
+  const isSoldOut = remainingEditions <= 0;
 
   return createPortal(
     <div
@@ -336,24 +371,26 @@ export function NFTModal({
                 {selectedNFT.name || "Higher NFT"}
               </h2>
 
-              {/* Display chain badge for on-chain NFTs */}
-              {isOnChainMode && (
-                <div className="mb-1 text-center">
-                  <span
-                    className={`inline-block px-2 py-0.5 text-xs font-medium rounded-full ${
-                      isOnChainScrollMode
-                        ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
-                        : "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
-                    }`}
-                  >
-                    {isOnChainScrollMode ? "Scroll Sepolia" : "Base Sepolia"}
-                  </span>
-                </div>
-              )}
+              {/* Display chain badge */}
+              <div className="mb-1 text-center">
+                <span
+                  className="inline-block px-2 py-0.5 text-xs font-medium rounded-full 
+                    bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
+                >
+                  Scroll Sepolia
+                </span>
+              </div>
 
               <p className="text-xs text-gray-600 dark:text-gray-300 mb-3 whitespace-pre-line leading-relaxed text-center">
                 {selectedNFT.description}
               </p>
+
+              {/* Warning if original doesn't exist */}
+              {!originalDoesExist && (
+                <div className="mb-3 p-2 bg-red-50 dark:bg-red-900/20 rounded text-xs text-red-600 dark:text-red-300 text-center">
+                  <p>This original NFT does not exist on Scroll.</p>
+                </div>
+              )}
 
               {/* Error message display */}
               {mintError && (
@@ -362,49 +399,58 @@ export function NFTModal({
                 </div>
               )}
 
-              {isOnChainMode && isOriginal ? (
-                <div className="bg-gray-50 dark:bg-gray-800 p-2 rounded-lg mb-3 text-xs text-center">
-                  {originalData && (
-                    <>
-                      <div className="mb-2">
-                        <p className="mb-1">
-                          <span className="font-medium">
-                            Editions Available:
-                          </span>{" "}
-                          {100 - originalData.editionCount} / 100
-                        </p>
-                      </div>
+              {/* Edition count display */}
+              <div className="text-center mb-3">
+                {isPollingEditions ? (
+                  <div className="flex justify-center items-center py-1">
+                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-600 dark:border-gray-400 mr-2"></div>
+                    <p className="text-xs text-gray-600 dark:text-gray-400">
+                      Updating...
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-sm">
+                    <span className="font-medium">{editionCount}</span>/
+                    {maxEditions} minted
+                    {!isSoldOut && remainingEditions > 0 && (
+                      <span className="text-xs text-green-600 dark:text-green-400 ml-2">
+                        ({remainingEditions} left)
+                      </span>
+                    )}
+                    {isSoldOut && (
+                      <span className="text-xs text-red-600 dark:text-red-400 ml-2">
+                        (Sold out)
+                      </span>
+                    )}
+                  </p>
+                )}
+              </div>
 
-                      <EditionMinter
-                        originalId={originalData.tokenId}
-                        editionCount={originalData.editionCount}
-                        price={isOnChainScrollMode ? "0.005" : "0.01"}
-                        chainId={chainId}
-                      />
-                    </>
+              {isOriginal ? (
+                <div className="bg-gray-50 dark:bg-gray-800 p-2 rounded-lg mb-3">
+                  {originalData && (
+                    <EditionMinter
+                      originalId={originalData.tokenId}
+                      editionCount={editionCount}
+                      price="0.005"
+                      maxEditions={maxEditions}
+                      isScroll={true} // This is the Scroll NFT modal, so isScroll is true
+                    />
                   )}
                 </div>
               ) : (
                 <button
                   onClick={handleMintClick}
-                  className="w-full py-2 px-3 bg-[#4caf50] hover:bg-[#45a049] text-white font-medium rounded-lg shadow-sm transition-colors text-sm"
+                  disabled={isSoldOut}
+                  className={`w-full py-2 px-3 ${
+                    isSoldOut
+                      ? "bg-gray-400 dark:bg-gray-700 cursor-not-allowed"
+                      : "bg-[#4caf50] hover:bg-[#45a049]"
+                  } text-white font-medium rounded-lg shadow-sm transition-colors text-sm`}
                 >
-                  Mint on Zora
+                  {isSoldOut ? "Sold Out" : "Mint on Zora"}
                 </button>
               )}
-
-              <div className="text-center mb-4">
-                <p className="text-lg font-semibold mb-2">
-                  Editions minted: {editionCount} / 100
-                </p>
-                {editionCount >= 100 ? (
-                  <p className="text-red-500">All editions have been minted</p>
-                ) : (
-                  <p className="text-green-500">
-                    {100 - editionCount} editions available for minting
-                  </p>
-                )}
-              </div>
             </>
           )}
         </div>
